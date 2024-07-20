@@ -9,6 +9,13 @@ sudo apt install -y python3 python3-pip
 # Install required Python packages
 pip3 install aiogram pyyaml
 
+# Set the GitHub repository URL
+repo_url="https://github.com/smaghili/MarzBackup.git"
+
+
+# Clone the GitHub repository
+git clone "$repo_url"
+
 # Check if bot.py exists in the current directory
 if [ -f "bot.py" ]; then
     echo "Starting bot.py..."
