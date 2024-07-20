@@ -184,7 +184,7 @@ async def restore_backup(file: types.Document):
         result = subprocess.run(restore_command, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0:
-            raise Exception(f"بازیابی با شکست مواجه شد: {result.stderr}")
+            raise Exception(f"Restore failed: {result.stderr}")
 
         print(f"{system.capitalize()} database restored successfully.")
         await bot.send_message(chat_id=ADMIN_CHAT_ID, text="دیتابیس با موفقیت بازیابی شد.")
@@ -203,12 +203,12 @@ async def initialize_bot():
     global API_TOKEN, ADMIN_CHAT_ID, bot, dp, loop, config, backup_interval_minutes, backup_task
 
     if not API_TOKEN:
-        API_TOKEN = input("لطفاً توکن ربات خود را وارد کنید: ").strip()
+        API_TOKEN = input("Please enter your bot token: ").strip()
         config["API_TOKEN"] = API_TOKEN
         save_config(config)
 
     if not ADMIN_CHAT_ID:
-        ADMIN_CHAT_ID = input("لطفاً شناسه چت ادمین را وارد کنید: ").strip()
+        ADMIN_CHAT_ID = input("Please enter the admin chat ID: ").strip()
         config["ADMIN_CHAT_ID"] = ADMIN_CHAT_ID
         save_config(config)
 
@@ -323,4 +323,3 @@ async def initialize_bot():
 
 if __name__ == '__main__':
     asyncio.run(initialize_bot())
-
