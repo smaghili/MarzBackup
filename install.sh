@@ -16,6 +16,7 @@ repo_url="https://github.com/smaghili/MarzBackup.git"
 # Clone the GitHub repository
 git clone "$repo_url"
 
+cd MarzBackup/
 # Check if bot.py exists in the current directory
 if [ -f "bot.py" ]; then
     echo "Starting bot.py..."
