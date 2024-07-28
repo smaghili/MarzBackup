@@ -293,42 +293,42 @@ async def initialize_bot():
             await message.reply("بازیابی با شکست مواجه شد. لطفاً لاگها را بررسی کنید.")
 
     @dp.message(lambda message: message.text == "وضعیت مصرف کاربران")
-async def handle_user_traffic_status(message: types.Message):
-    if str(message.from_user.id) != ADMIN_CHAT_ID:
-        await message.reply("شما مجاز به استفاده از این ربات نیستید.")
-        return
-    
-    await message.reply("در حال ایجاد گزارش وضعیت مصرف کاربران...")
-    
-    # اجرای کوئری SQL برای دریافت اطلاعات مصرف کاربران
-    result = subprocess.run(
-        ["docker", "exec", "-i", "marzban-db-1", 
-         "mariadb", "-u", "root", "-p12341234", "marzban", "-e",
-         "SELECT admins.username AS admin_username, users.username AS user_username, "
-         "(users.used_traffic + IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)) / 1073741824 AS user_total_traffic_gb, "
-         "SUM((users.used_traffic + IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0))) OVER (PARTITION BY admins.username) / 1073741824 AS admin_total_traffic_gb "
-         "FROM admins LEFT JOIN users ON users.admin_id = admins.id LEFT JOIN user_usage_logs ON user_usage_logs.user_id = users.id "
-         "WHERE admins.username = 'mahdi206' GROUP BY admins.username, users.username, users.used_traffic ORDER BY user_total_traffic_gb DESC"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
-    )
-    
-    if result.returncode != 0:
-        await message.reply("خطایی در اجرای کوئری SQL رخ داد.")
-        return
-    
-    # ذخیره خروجی کوئری در فایل CSV
-    with open('/root/output.csv', 'w') as f:
-        f.write("Admin Username,User Username,User Total Traffic GB,Admin Total Traffic GB\n")
-        f.write(result.stdout.replace('\t', ','))
-    
-    # تبدیل فایل CSV به عکس با استفاده از convert2pic.py
-    subprocess.run(["python3", "/root/convert2pic.py"])
-    
-    # ارسال عکس به چت ادمین
-    photo = FSInputFile('/root/output_table.png')
-    await bot.send_photo(chat_id=ADMIN_CHAT_ID, photo=photo, caption="وضعیت مصرف کاربران شما بدین صورت است:")
-    
-    await message.reply("گزارش وضعیت مصرف کاربران ارسال شد.")
+    async def handle_user_traffic_status(message: types.Message):
+        if str(message.from_user.id) != ADMIN_CHAT_ID:
+            await message.reply("شما مجاز به استفاده از این ربات نیستید.")
+            return
+        
+        await message.reply("در حال ایجاد گزارش وضعیت مصرف کاربران...")
+        
+        # اجرای کوئری SQL برای دریافت اطلاعات مصرف کاربران
+        result = subprocess.run(
+            ["docker", "exec", "-i", "marzban-db-1", 
+             "mariadb", "-u", "root", "-p12341234", "marzban", "-e",
+             "SELECT admins.username AS admin_username, users.username AS user_username, "
+             "(users.used_traffic + IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)) / 1073741824 AS user_total_traffic_gb, "
+             "SUM((users.used_traffic + IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0))) OVER (PARTITION BY admins.username) / 1073741824 AS admin_total_traffic_gb "
+             "FROM admins LEFT JOIN users ON users.admin_id = admins.id LEFT JOIN user_usage_logs ON user_usage_logs.user_id = users.id "
+             "WHERE admins.username = 'mahdi206' GROUP BY admins.username, users.username, users.used_traffic ORDER BY user_total_traffic_gb DESC"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+        )
+        
+        if result.returncode != 0:
+            await message.reply("خطایی در اجرای کوئری SQL رخ داد.")
+            return
+        
+        # ذخیره خروجی کوئری در فایل CSV
+        with open('/root/output.csv', 'w') as f:
+            f.write("Admin Username,User Username,User Total Traffic GB,Admin Total Traffic GB\n")
+            f.write(result.stdout.replace('\t', ','))
+        
+        # تبدیل فایل CSV به عکس با استفاده از convert2pic.py
+        subprocess.run(["python3", "/root/convert2pic.py"])
+        
+        # ارسال عکس به چت ادمین
+        photo = FSInputFile('/root/output_table.png')
+        await bot.send_photo(chat_id=ADMIN_CHAT_ID, photo=photo, caption="وضعیت مصرف کاربران شما بدین صورت است:")
+        
+        await message.reply("گزارش وضعیت مصرف کاربران ارسال شد.")
 
 def shutdown_handler(signum, frame):
     print("Shutting down...")
