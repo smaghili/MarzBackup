@@ -122,9 +122,10 @@ async def restore_backup(file, bot):
 
         os.makedirs(mysql_backup_dir, exist_ok=True)
 
-        file_info = await bot.get_file(file.file_id)
-        file_path = f"{mysql_backup_dir}/{file.file_name}"
-        await bot.download_file(file_info.file_path, file_path)
+        file_id = file.file_id
+        file = await bot.get_file(file_id)
+        file_path = os.path.join(mysql_backup_dir, file.file_name)
+        await bot.download_file(file.file_path, destination=file_path)
 
         db_container = get_db_container_name(system)
         password = get_db_password(system)
@@ -141,4 +142,28 @@ async def restore_backup(file, bot):
     except Exception as e:
         await bot.send_message(chat_id=config["ADMIN_CHAT_ID"], text=f"خطایی در فرآیند بازیابی رخ داد: {str(e)}")
         print(f"An error occurred during the restore process: {str(e)}")
+        return False
+
+# اضافه کردن تابع جدید برای بررسی وضعیت مصرف کاربران
+async def get_user_traffic_status(bot):
+    try:
+        # این بخش باید با توجه به نحوه ذخیره‌سازی اطلاعات مصرف در سیستم شما پیاده‌سازی شود
+        # این یک مثال ساده است و ممکن است نیاز به تغییر داشته باشد
+        status_command = "docker exec marzban-marzban-1 marzban users list"
+        result = subprocess.run(status_command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(f"Failed to get user status: {result.stderr}")
+        
+        # پردازش خروجی و ایجاد گزارش
+        report = "وضعیت مصرف کاربران:\n\n"
+        for line in result.stdout.split('\n'):
+            if line.strip():
+                report += line + "\n"
+        
+        await bot.send_message(chat_id=config["ADMIN_CHAT_ID"], text=report)
+        return True
+    except Exception as e:
+        await bot.send_message(chat_id=config["ADMIN_CHAT_ID"], text=f"خطایی در دریافت وضعیت مصرف کاربران رخ داد: {str(e)}")
+        print(f"An error occurred while getting user traffic status: {str(e)}")
         return False
