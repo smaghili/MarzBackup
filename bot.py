@@ -3,7 +3,6 @@ import json
 import subprocess
 import asyncio
 import signal
-import re
 import yaml
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -340,11 +339,14 @@ def shutdown_handler(signum, frame):
 signal.signal(signal.SIGINT, shutdown_handler)
 signal.signal(signal.SIGTERM, shutdown_handler)
 
-print("Bot is starting...")
-loop = asyncio.get_event_loop()
-if backup_interval_minutes:
-    backup_task = asyncio.create_task(schedule_backup(backup_interval_minutes))
-await dp.start_polling(bot)
+async def main():
+    global loop
+    print("Bot is starting...")
+    loop = asyncio.get_event_loop()
+    await initialize_bot()
+    if backup_interval_minutes:
+        backup_task = asyncio.create_task(schedule_backup(backup_interval_minutes))
+    await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    asyncio.run(initialize_bot())
+    asyncio.run(main())
