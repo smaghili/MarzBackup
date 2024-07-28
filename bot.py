@@ -23,7 +23,7 @@ def load_config():
             "ADMIN_CHAT_ID": "",
             "backup_interval_minutes": None,
             "db_password": None,
-            "admins": []  # List to store admin IDs
+            "admins": []  # لیست برای ذخیره شناسه‌های ادمین
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(default_config, f, indent=4)
@@ -41,7 +41,7 @@ db_password = config.get("db_password")
 
 class BackupSettings(StatesGroup):
     waiting_for_schedule = State()
-    waiting_for_new_admin = State()  # State to wait for new admin ID
+    waiting_for_new_admin = State()  # حالت برای انتظار شناسه ادمین جدید
 
 bot = None
 dp = None
@@ -213,7 +213,7 @@ async def initialize_bot():
 
     @dp.message(Command("start"))
     async def send_welcome(message: types.Message):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         keyboard = ReplyKeyboardMarkup(
@@ -249,7 +249,7 @@ async def initialize_bot():
 
     @dp.message(lambda message: message.text == "پشتیبانگیری فوری")
     async def handle_get_backup(message: types.Message):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         await message.reply("در حال شروع فرآیند پشتیبانگیری...")
@@ -261,7 +261,7 @@ async def initialize_bot():
 
     @dp.message(lambda message: message.text == "تنظیم فاصله زمانی پشتیبانگیری")
     async def set_backup(message: types.Message, state: FSMContext):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         await state.set_state(BackupSettings.waiting_for_schedule)
@@ -296,14 +296,14 @@ async def initialize_bot():
 
     @dp.message(lambda message: message.text == "بازیابی پشتیبان")
     async def handle_restore_backup(message: types.Message):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         await message.reply("لطفاً فایل SQL را برای بازیابی ارسال کنید.")
 
     @dp.message(lambda message: message.document and message.document.file_name.endswith('.sql'))
     async def handle_document(message: types.Message):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         document = message.document
@@ -316,7 +316,7 @@ async def initialize_bot():
 
     @dp.message(lambda message: message.text == "وضعیت مصرف کاربران")
     async def handle_user_traffic_status(message: types.Message):
-        if str(message.from_user.id) not in config["admins"]:
+        if str(message.from_user.id) not in config["admins"] and str(message.from_user.id) != ADMIN_CHAT_ID:
             await message.reply("شما مجاز به استفاده از این ربات نیستید.")
             return
         
