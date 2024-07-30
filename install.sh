@@ -20,7 +20,7 @@ cd MarzBackup/
 # Check if bot.py exists in the current directory
 if [ -f "bot.py" ]; then
     echo "Starting bot.py..."
-    python3 bot.py
+    python3 main.py
 else
     echo "Error: bot.py not found in the current directory."
     exit 1
