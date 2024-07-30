@@ -59,13 +59,6 @@ def backup_database(system):
         container_id = get_db_container_id(system)
         backup_file = f"/opt/marzban/{system}-backup.sql" if system == "marzban" else f"/etc/opt/marzneshin/{system}-backup.sql"
 
-        # Check if mariadb-dump is available
-        check_command = ['docker', 'exec', container_id, 'which', 'mariadb-dump']
-        try:
-            subprocess.run(check_command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            raise RuntimeError("mariadb-dump is not available in the container")
-
         subprocess.run([
             'docker', 'exec', container_id, 'mariadb-dump', '-u', 'root', 
             f'--password={password}', '--all-databases', 
