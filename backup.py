@@ -38,7 +38,7 @@ async def get_db_container_name(system):
             if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
                 # Construct the container name
                 project_name = os.path.basename(os.path.dirname(compose_file))
-                container_name = f"{project_name}-{service_name}"
+                container_name = f"{project_name}-{service_name}-1"
                 
                 # Check if the container is running
                 result = await asyncio.create_subprocess_shell(
@@ -110,6 +110,13 @@ def get_db_password(system):
 
 async def create_and_send_backup(bot):
     try:
+        if not ADMIN_CHAT_ID:
+            raise ValueError("ADMIN_CHAT_ID is not set in the config file")
+
+        # Check if zip is installed
+        if not subprocess.run(['which', 'zip'], capture_output=True, text=True).stdout.strip():
+            raise RuntimeError("zip is not installed. Please install it using 'apt-get install zip'")
+
         marzban_dir = subprocess.getoutput("find /opt /root -type d -iname 'marzban' -print -quit")
         marzneshin_dir = "/var/lib/marzneshin"
         if marzban_dir:
@@ -145,12 +152,24 @@ async def create_and_send_backup(bot):
             f.write(backup_script)
         os.chmod(f"{mysql_backup_dir}/marz-backup.sh", 0o755)
         
-        await asyncio.create_subprocess_shell(f"docker exec {db_container} bash -c '/var/lib/mysql/db-backup/marz-backup.sh'")
+        process = await asyncio.create_subprocess_shell(
+            f"docker exec {db_container} bash -c '/var/lib/mysql/db-backup/marz-backup.sh'",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            raise RuntimeError(f"Error in backup script: {stderr.decode()}")
         
         backup_command = f"zip -r /root/marz-backup-{system}.zip {' '.join(backup_dirs)} {mysql_backup_dir}/*"
-        await asyncio.create_subprocess_shell(backup_command)
-        await asyncio.create_subprocess_shell(f"zip -ur /root/marz-backup-{system}.zip {mysql_backup_dir}/*.sql")
-        await asyncio.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
+        process = await asyncio.create_subprocess_shell(backup_command)
+        await process.communicate()
+        
+        process = await asyncio.create_subprocess_shell(f"zip -ur /root/marz-backup-{system}.zip {mysql_backup_dir}/*.sql")
+        await process.communicate()
+        
+        process = await asyncio.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
+        await process.communicate()
         
         caption = f"پشتیبان {system.capitalize()}\nایجاد شده توسط @sma16719\nhttps://github.com/smaghili/MarzBackup"
         backup_file = FSInputFile(f"/root/marz-backup-{system}.zip")
