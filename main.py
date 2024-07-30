@@ -16,17 +16,20 @@ dp = None
 
 async def initialize_bot():
     global API_TOKEN, ADMIN_CHAT_ID, bot, dp, config, backup_interval_minutes, backup_task
-    if not API_TOKEN:
-        API_TOKEN = input("Please enter your bot token: ").strip()
-        config["API_TOKEN"] = API_TOKEN
-        save_config(config)
-    if not ADMIN_CHAT_ID:
-        ADMIN_CHAT_ID = input("Please enter the admin chat ID: ").strip()
-        config["ADMIN_CHAT_ID"] = ADMIN_CHAT_ID
-        save_config(config)
-    bot = Bot(token=API_TOKEN)
-    storage = MemoryStorage()
-    dp = Dispatcher(storage=storage)
+    try:
+        if not API_TOKEN:
+            API_TOKEN = input("Please enter your bot token: ").strip()
+            config["API_TOKEN"] = API_TOKEN
+            save_config(config)
+        if not ADMIN_CHAT_ID:
+            ADMIN_CHAT_ID = input("Please enter the admin chat ID: ").strip()
+            config["ADMIN_CHAT_ID"] = ADMIN_CHAT_ID
+            save_config(config)
+        bot = Bot(token=API_TOKEN)
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage)
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize bot: {e}")
 
 def shutdown_handler(signum, frame):
     print("Shutting down...")

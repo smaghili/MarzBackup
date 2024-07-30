@@ -1,24 +1,20 @@
 import os
-import json
+import yaml
 
-CONFIG_FILE = 'config.json'
+CONFIG_FILE_PATH = 'config.yml'
 
 def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    else:
-        default_config = {
-            "API_TOKEN": "",  # توکن ربات تلگرام
-            "ADMIN_CHAT_ID": "",  # شناسه چت ادمین
-            "backup_interval_minutes": None,  # فاصله زمانی پشتیبان‌گیری
-            "db_password": None,  # پسورد دیتابیس
-            "admins": []  # لیست برای ذخیره شناسه‌های ادمین
-        }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(default_config, f, indent=4)
-        return default_config
+    try:
+        with open(CONFIG_FILE_PATH, 'r') as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError:
+        return {}
+    except yaml.YAMLError as e:
+        raise RuntimeError(f"Error loading config file: {e}")
 
 def save_config(config):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
+    try:
+        with open(CONFIG_FILE_PATH, 'w') as file:
+            yaml.safe_dump(config, file)
+    except yaml.YAMLError as e:
+        raise RuntimeError(f"Error saving config file: {e}")
