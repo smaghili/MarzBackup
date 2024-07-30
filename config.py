@@ -1,10 +1,17 @@
 import json
 import os
 
-CONFIG_FILE_PATH = 'config.json'
+CONFIG_FILE_PATH = '/opt/marzbackup/config.json'
 
 def load_config():
     try:
+        if not os.path.exists(os.path.dirname(CONFIG_FILE_PATH)):
+            os.makedirs(os.path.dirname(CONFIG_FILE_PATH), exist_ok=True)
+        
+        if not os.path.exists(CONFIG_FILE_PATH):
+            with open(CONFIG_FILE_PATH, 'w') as file:
+                json.dump({}, file)
+        
         with open(CONFIG_FILE_PATH, 'r') as file:
             config = json.load(file)
         return config

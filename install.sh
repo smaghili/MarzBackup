@@ -3,25 +3,34 @@
 # Update package lists
 sudo apt update
 
-# Install Python 3 and pip if not already installed
-sudo apt install -y python3 python3-pip
+# Install Python 3, pip, and git if not already installed
+sudo apt install -y python3 python3-pip git
+
+# Set the GitHub repository URL and installation directory
+REPO_URL="https://github.com/smaghili/MarzBackup.git"
+INSTALL_DIR="/opt/MarzBackup"
+CONFIG_DIR="/opt/marzbackup"
+
+# Clone or update the GitHub repository
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Updating existing installation..."
+    cd "$INSTALL_DIR"
+    git fetch origin
+    git reset --hard origin/main
+else
+    echo "Performing fresh installation..."
+    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+fi
+
+# Create config directory if it doesn't exist
+sudo mkdir -p "$CONFIG_DIR"
 
 # Install required Python packages
-pip3 install aiogram pyyaml
+pip3 install -r requirements.txt
 
-# Set the GitHub repository URL
-repo_url="https://github.com/smaghili/MarzBackup.git"
+# Copy the marzbackup.sh script to /usr/local/bin and make it executable
+sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
+sudo chmod +x /usr/local/bin/marzbackup
 
-
-# Clone the GitHub repository
-git clone "$repo_url"
-
-cd MarzBackup/
-# Check if bot.py exists in the current directory
-if [ -f "bot.py" ]; then
-    echo "Starting bot.py..."
-    python3 main.py
-else
-    echo "Error: bot.py not found in the current directory."
-    exit 1
-fi
+echo "Installation completed. You can now use 'marzbackup update' and 'marzbackup start' commands."
