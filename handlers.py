@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import save_config, load_config, ADMIN_CHAT_ID
+from config import ADMIN_CHAT_ID, save_config, config
 import os
 import asyncio
 import tempfile
@@ -14,10 +14,7 @@ class BackupStates(StatesGroup):
 # Create a router instance
 router = Router()
 
-config = load_config()
-
 async def create_and_send_backup():
-    global bot
     try:
         marzban_dir = await asyncio.subprocess.check_output("find /opt /root -type d -iname 'marzban' -print -quit", shell=True)
         marzban_dir = marzban_dir.decode().strip()
@@ -32,8 +29,7 @@ async def create_and_send_backup():
             backup_dirs = ["/etc/opt/marzneshin", "/var/lib/marznode"]
             mysql_backup_dir = "/var/lib/marzneshin/mysql/db-backup"
         else:
-            await bot.send_message(chat_id=ADMIN_CHAT_ID, text="هیچ دایرکتوری Marzban یا Marzneshin یافت نشد.")
-            return False
+            return False, "هیچ دایرکتوری Marzban یا Marzneshin یافت نشد."
 
         db_container = await get_db_container_name(system)
         password = await get_db_password(system)
@@ -75,28 +71,23 @@ async def create_and_send_backup():
         
         await asyncio.subprocess.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
         
-        caption = f"پشتیبان {system.capitalize()}\nایجاد شده توسط @sma16719\nhttps://github.com/smaghili/MarzBackup"
-        backup_file = FSInputFile(backup_file_path)
-        await bot.send_document(chat_id=ADMIN_CHAT_ID, document=backup_file, caption=caption)
-        
         os.remove(temp_script_path)
-        os.remove(backup_file_path)
 
-        print(f"{system.capitalize()} backup completed and sent successfully.")
-        return True
+        return True, backup_file_path
 
     except Exception as e:
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {str(e)}")
-        print(f"An error occurred during the backup process: {str(e)}")
-        return False
+        return False, f"An error occurred during the backup process: {str(e)}"
 
 async def handle_get_backup(message: Message):
     try:
-        success = await create_and_send_backup()
+        success, result = await create_and_send_backup()
         if success:
+            backup_file = FSInputFile(result)
+            caption = f"پشتیبان\nایجاد شده توسط @sma16719\nhttps://github.com/smaghili/MarzBackup"
+            await message.bot.send_document(chat_id=ADMIN_CHAT_ID, document=backup_file, caption=caption)
             await message.answer("پشتیبان‌گیری انجام شد و فایل ارسال گردید.")
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
+            await message.answer(f"خطا در پشتیبان‌گیری: {result}")
     except Exception as e:
         await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
