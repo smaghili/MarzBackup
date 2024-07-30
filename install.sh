@@ -33,4 +33,7 @@ pip3 install -r requirements.txt
 sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
 sudo chmod +x /usr/local/bin/marzbackup
 
-echo "Installation completed. You can now use 'marzbackup update' and 'marzbackup start' commands."
+echo "Installation completed. Starting the bot..."
+
+# Start the bot
+python3 "$INSTALL_DIR/main.py"
