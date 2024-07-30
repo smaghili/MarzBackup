@@ -1,4 +1,3 @@
-
 import asyncio
 import signal
 from aiogram import Bot, Dispatcher
@@ -28,7 +27,7 @@ async def initialize_bot():
             save_config(config)
         bot = Bot(token=API_TOKEN)
         storage = MemoryStorage()
-        dp = Dispatcher(storage=storage)  # Update for aiogram 3.x
+        dp = Dispatcher(storage=storage)
     except Exception as e:
         raise RuntimeError(f"Failed to initialize bot: {e}")
 
