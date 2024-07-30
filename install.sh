@@ -10,6 +10,7 @@ sudo apt install -y python3 python3-pip git
 REPO_URL="https://github.com/smaghili/MarzBackup.git"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
+LOG_FILE="/var/log/marzbackup.log"
 
 # Clone or update the GitHub repository
 if [ -d "$INSTALL_DIR" ]; then
@@ -33,7 +34,10 @@ pip3 install -r requirements.txt
 sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
 sudo chmod +x /usr/local/bin/marzbackup
 
-echo "Installation completed. Starting the bot..."
+echo "Installation completed. Starting the bot in the background..."
 
-# Start the bot
-python3 "$INSTALL_DIR/main.py"
+# Start the bot in the background
+nohup python3 "$INSTALL_DIR/main.py" > "$LOG_FILE" 2>&1 &
+
+echo "Bot is running in the background. You can check its status with 'marzbackup status'."
+echo "To view logs, use: tail -f $LOG_FILE"
