@@ -57,7 +57,7 @@ def backup_database(system):
     try:
         password = get_db_password(system)
         container_id = get_db_container_id(system)
-        backup_file = f"/opt/marzban/{system}-backup.sql" if system == "marzban" else "/etc/opt/marzneshin/{system}-backup.sql"
+        backup_file = f"/opt/marzban/{system}-backup.sql" if system == "marzban" else f"/etc/opt/marzneshin/{system}-backup.sql"
 
         subprocess.run([
             'docker', 'exec', container_id, 'mysqldump', '-u', 'root', 
@@ -70,10 +70,10 @@ def backup_database(system):
     except Exception as e:
         raise RuntimeError(f"Failed to backup database: {e}")
 
-def send_backup_to_admin(system, bot, admin_chat_id):
+async def send_backup_to_admin(system, bot, admin_chat_id):
     try:
         backup_file = backup_database(system)
         document = FSInputFile(backup_file)
-        bot.send_document(chat_id=admin_chat_id, document=document)
+        await bot.send_document(chat_id=admin_chat_id, document=document)
     except Exception as e:
         raise RuntimeError(f"Failed to send backup to admin: {e}")

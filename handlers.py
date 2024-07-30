@@ -3,6 +3,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import save_config, load_config
+from backup import backup_database, send_backup_to_admin
 
 # Define states
 class BackupStates(StatesGroup):
@@ -15,8 +16,14 @@ config = load_config()
 
 async def handle_get_backup(message: Message):
     try:
-        # Implement the logic to get backup
-        await message.answer("پشتیبان‌گیری انجام شد.")
+        # Perform the backup
+        system = "marzban"  # یا "marzneshin" بسته به سیستم شما
+        backup_file = backup_database(system)
+        
+        # Send the backup file
+        await send_backup_to_admin(system, message.bot, message.chat.id)
+        
+        await message.answer("پشتیبان‌گیری انجام شد و فایل ارسال گردید.")
     except Exception as e:
         await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
