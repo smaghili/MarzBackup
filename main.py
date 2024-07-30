@@ -1,3 +1,4 @@
+
 import asyncio
 import signal
 from aiogram import Bot, Dispatcher
@@ -27,7 +28,7 @@ async def initialize_bot():
             save_config(config)
         bot = Bot(token=API_TOKEN)
         storage = MemoryStorage()
-        dp = Dispatcher(storage=storage)
+        dp = Dispatcher(bot, storage)
     except Exception as e:
         raise RuntimeError(f"Failed to initialize bot: {e}")
 
@@ -42,7 +43,7 @@ async def main():
     await initialize_bot()
     register_handlers(dp)
     print("Bot is starting...")
-    await dp.start_polling(bot)
+    await dp.start_polling()
 
 if __name__ == '__main__':
     asyncio.run(main())
