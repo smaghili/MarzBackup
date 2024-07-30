@@ -28,7 +28,8 @@ async def initialize_bot():
             save_config(config)
         bot = Bot(token=API_TOKEN)
         storage = MemoryStorage()
-        dp = Dispatcher(bot, storage)
+        dp = Dispatcher(storage=storage)  # Updated for aiogram 3.x
+        dp.set_bot(bot)  # Set the bot
     except Exception as e:
         raise RuntimeError(f"Failed to initialize bot: {e}")
 
