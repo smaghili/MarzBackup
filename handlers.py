@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from config import save_config, load_config
 
 # Define states
 class BackupStates(StatesGroup):
@@ -9,6 +10,8 @@ class BackupStates(StatesGroup):
 
 # Create a router instance
 router = Router()
+
+config = load_config()
 
 async def handle_get_backup(message: Message):
     try:
@@ -20,16 +23,24 @@ async def handle_get_backup(message: Message):
 async def set_backup(message: Message, state: FSMContext):
     try:
         await state.set_state(BackupStates.waiting_for_schedule)
-        await message.answer("لطفاً زمانبندی پشتیبان‌گیری را ارسال کنید (مثال: 'روزانه ساعت 10:00').")
+        await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
     except Exception as e:
         await message.answer(f"خطا در تنظیم پشتیبان‌گیری: {e}")
 
 async def process_schedule(message: Message, state: FSMContext):
     try:
         schedule = message.text
-        # Save the schedule to config
-        await state.clear()
-        await message.answer("زمانبندی پشتیبان‌گیری تنظیم شد.")
+        try:
+            minutes = int(schedule)
+            if minutes <= 0:
+                raise ValueError("دقیقه باید عدد مثبت باشد")
+            config["backup_interval_minutes"] = minutes
+            save_config(config)
+            await state.clear()
+            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        except ValueError:
+            await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
+            return
     except Exception as e:
         await message.answer(f"خطا در پردازش زمانبندی: {e}")
 
