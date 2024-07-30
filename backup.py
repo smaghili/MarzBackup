@@ -8,7 +8,54 @@ from config import load_config, save_config, ADMIN_CHAT_ID
 config = load_config()
 
 async def get_db_container_name(system):
-    # ... (previous implementation remains unchanged)
+    try:
+        # First, check if the container name is already in the config
+        container_name = config.get(f"{system}_db_container")
+        if container_name:
+            # Verify if the container is still running
+            result = await asyncio.create_subprocess_shell(
+                f"docker ps --format '{{{{.Names}}}}' | grep {container_name}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await result.communicate()
+            if stdout:
+                return container_name
+        
+        # If not in config or not running, find it from docker-compose.yml
+        if system == "marzban":
+            compose_file = "/opt/marzban/docker-compose.yml"
+        elif system == "marzneshin":
+            compose_file = "/etc/opt/marzneshin/docker-compose.yml"
+        else:
+            raise ValueError(f"Unknown system: {system}")
+
+        with open(compose_file, 'r') as f:
+            compose_config = yaml.safe_load(f)
+
+        services = compose_config.get('services', {})
+        for service_name, service_config in services.items():
+            if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
+                # Construct the container name
+                project_name = os.path.basename(os.path.dirname(compose_file))
+                container_name = f"{project_name}-{service_name}"
+                
+                # Check if the container is running
+                result = await asyncio.create_subprocess_shell(
+                    f"docker ps --format '{{{{.Names}}}}' | grep {container_name}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await result.communicate()
+                if stdout:
+                    # Save the container name in the config
+                    config[f"{system}_db_container"] = container_name
+                    save_config(config)
+                    return container_name
+
+        raise ValueError(f"No running MariaDB container found for {system}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to get DB container name: {e}")
 
 def get_db_password(system):
     try:
@@ -116,7 +163,6 @@ async def create_and_send_backup(bot):
         print(f"An error occurred during the backup process: {str(e)}")
         return False
 
-# This function can be called from handlers.py
 async def handle_backup(bot):
     success = await create_and_send_backup(bot)
     return success
