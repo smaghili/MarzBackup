@@ -1,4 +1,3 @@
-
 from aiogram import Dispatcher
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -31,7 +30,7 @@ async def handle_restore_backup(message: Message):
         await message.answer(f"Restore backup error: {e}")
 
 async def handle_document(message: Message):
-    try {
+    try:
         if message.document and message.document.file_name.endswith('.sql'):
             await message.answer("SQL file processed.")
     except Exception as e:
