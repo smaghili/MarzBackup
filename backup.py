@@ -8,63 +8,56 @@ from config import load_config, save_config, ADMIN_CHAT_ID
 config = load_config()
 
 async def get_db_container_name(system):
+    # ... (previous implementation remains unchanged)
+
+def get_db_password(system):
     try:
-        # First, check if the container name is already in the config
-        container_name = config.get(f"{system}_db_container")
-        if container_name:
-            # Verify if the container is still running
-            result = await asyncio.create_subprocess_shell(
-                f"docker ps --format '{{{{.Names}}}}' | grep {container_name}",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await result.communicate()
-            if stdout:
-                return container_name
-        
-        # If not in config or not running, find it from docker-compose.yml
+        # First, check if the password is already in the config
+        password = config.get(f"{system}_db_password")
+        if password:
+            return password
+
         if system == "marzban":
+            env_file = "/opt/marzban/.env"
             compose_file = "/opt/marzban/docker-compose.yml"
         elif system == "marzneshin":
+            env_file = "/etc/opt/marzneshin/.env"
             compose_file = "/etc/opt/marzneshin/docker-compose.yml"
         else:
             raise ValueError(f"Unknown system: {system}")
 
-        with open(compose_file, 'r') as f:
-            compose_config = yaml.safe_load(f)
+        # Check .env file
+        if os.path.exists(env_file):
+            with open(env_file, 'r') as f:
+                for line in f:
+                    if line.strip().startswith('MARIADB_ROOT_PASSWORD='):
+                        password = line.split('=', 1)[1].strip()
+                        config[f"{system}_db_password"] = password
+                        save_config(config)
+                        return password
 
-        services = compose_config.get('services', {})
-        for service_name, service_config in services.items():
-            if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
-                # Construct the container name
-                project_name = os.path.basename(os.path.dirname(compose_file))
-                container_name = f"{project_name}-{service_name}"
-                
-                # Check if the container is running
-                result = await asyncio.create_subprocess_shell(
-                    f"docker ps --format '{{{{.Names}}}}' | grep {container_name}",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, _ = await result.communicate()
-                if stdout:
-                    # Save the container name in the config
-                    config[f"{system}_db_container"] = container_name
-                    save_config(config)
-                    return container_name
+        # Check docker-compose.yml file
+        if os.path.exists(compose_file):
+            with open(compose_file, 'r') as f:
+                compose_config = yaml.safe_load(f)
+                services = compose_config.get('services', {})
+                for service in services.values():
+                    environment = service.get('environment', {})
+                    if isinstance(environment, list):
+                        for env in environment:
+                            if env.startswith('MARIADB_ROOT_PASSWORD='):
+                                password = env.split('=', 1)[1].strip()
+                                config[f"{system}_db_password"] = password
+                                save_config(config)
+                                return password
+                    elif isinstance(environment, dict):
+                        if 'MARIADB_ROOT_PASSWORD' in environment:
+                            password = environment['MARIADB_ROOT_PASSWORD']
+                            config[f"{system}_db_password"] = password
+                            save_config(config)
+                            return password
 
-        raise ValueError(f"No running MariaDB container found for {system}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to get DB container name: {e}")
-
-def get_db_password(system):
-    try:
-        env_file = "/opt/marzban/.env" if system == "marzban" else "/etc/opt/marzneshin/.env"
-        with open(env_file, 'r') as f:
-            for line in f:
-                if line.strip().startswith('MYSQL_ROOT_PASSWORD='):
-                    return line.split('=', 1)[1].strip()
-        raise ValueError("Database password not found in .env file")
+        raise ValueError("Database password (MARIADB_ROOT_PASSWORD) not found in .env or docker-compose.yml files")
     except Exception as e:
         raise RuntimeError(f"Failed to get DB password: {e}")
 
