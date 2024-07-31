@@ -33,15 +33,17 @@ async def backup_command(message: types.Message):
 
 @dp.message(lambda message: message.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup_command(message: types.Message):
-    await set_backup(message, dp.current_state())
+    await set_backup(message, dp[message.from_user.id])
 
 async def scheduled_backup():
-    config = load_config()
-    interval = config.get("backup_interval_minutes", 0)
-    if interval > 0:
-        while True:
+    while True:
+        config = load_config()
+        interval = config.get("backup_interval_minutes", 0)
+        if interval > 0:
             await asyncio.sleep(interval * 60)
             await create_and_send_backup(bot)
+        else:
+            await asyncio.sleep(60)  # Check every minute if interval is not set
 
 async def main():
     await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات MarzBackup راه‌اندازی شد.", reply_markup=keyboard)
