@@ -12,6 +12,7 @@ from backup import handle_backup, create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
+    waiting_for_schedule = State()
     waiting_for_sql_file = State()
 
 # Create a router instance
