@@ -84,8 +84,12 @@ async def request_sql_file(message: types.Message, state: FSMContext):
 @router.message(BackupStates.waiting_for_sql_file)
 async def process_sql_file(message: types.Message, state: FSMContext):
     try:
-        if not message.document or not message.document.file_name.lower().endswith('.sql'):
-            await message.answer("لطفاً یک فایل با پسوند .sql ارسال کنید.")
+        if not message.document:
+            await message.answer("لطفاً یک فایل ارسال کنید.")
+            return
+        
+        if not message.document.file_name.lower().endswith('.sql'):
+            await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
             return
 
         config = load_config()
@@ -99,8 +103,6 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         file = await message.bot.get_file(message.document.file_id)
         file_path = os.path.join(backup_dir, message.document.file_name)
         await message.bot.download_file(file.file_path, file_path)
-
-        await message.answer(f"فایل SQL با موفقیت در مسیر {file_path} ذخیره شد.")
 
         # Extract database information from config
         container_name = config.get(f"{system}_db_container")
