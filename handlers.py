@@ -12,7 +12,6 @@ from backup import handle_backup, create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
-    waiting_for_schedule = State()
     waiting_for_sql_file = State()
 
 # Create a router instance
@@ -83,15 +82,15 @@ async def request_sql_file(message: types.Message, state: FSMContext):
 
 @router.message(BackupStates.waiting_for_sql_file)
 async def process_sql_file(message: types.Message, state: FSMContext):
-    try:
-        if not message.document:
-            await message.answer("لطفاً یک فایل ارسال کنید.")
-            return
-        
-        if not message.document.file_name.lower().endswith('.sql'):
-            await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
-            return
+    if not message.document:
+        await message.answer("لطفاً یک فایل ارسال کنید.")
+        return
+    
+    if not message.document.file_name.lower().endswith('.sql'):
+        await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
+        return
 
+    try:
         config = load_config()
         system = "marzban" if os.path.exists("/opt/marzban") else "marzneshin"
         backup_dir = f"/var/lib/{system}/mysql/db-backup"
@@ -131,13 +130,6 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         await message.answer(f"خطا در پردازش فایل SQL: {e}")
     finally:
         await state.clear()
-
-@router.message(BackupStates.waiting_for_sql_file)
-async def handle_non_sql_file(message: types.Message, state: FSMContext):
-    if not message.document or not message.document.file_name.lower().endswith('.sql'):
-        await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
-    else:
-        await process_sql_file(message, state)
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
