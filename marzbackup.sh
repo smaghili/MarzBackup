@@ -3,21 +3,14 @@
 REPO_URL="https://github.com/smaghili/MarzBackup.git"
 SCRIPT_PATH="/usr/local/bin/marzbackup"
 TEMP_SCRIPT="/tmp/marzbackup_new.sh"
-
-# Load user configurations
-CONFIG_FILE="/etc/marzbackup/config.sh"
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-else
-    echo "Config file not found. Using default settings."
-    INSTALL_DIR="/opt/MarzBackup"
-    CONFIG_DIR="/opt/marzbackup"
-    LOG_FILE="/var/log/marzbackup.log"
-    PID_FILE="/var/run/marzbackup.pid"
-fi
+INSTALL_DIR="/opt/MarzBackup"
+CONFIG_DIR="/opt/marzbackup"
+LOG_FILE="/var/log/marzbackup.log"
+PID_FILE="/var/run/marzbackup.pid"
 
 update() {
     echo "Updating MarzBackup..."
+    stop
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         git fetch origin
@@ -31,7 +24,7 @@ update() {
             echo "New version of marzbackup.sh downloaded. Applying update..."
             sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
             echo "marzbackup.sh has been updated. Restarting with new version..."
-            exec "$SCRIPT_PATH" update_finalize
+            exec "$SCRIPT_PATH" start
         else
             echo "Error: marzbackup.sh not found in repository."
             exit 1
@@ -40,21 +33,6 @@ update() {
         echo "MarzBackup is not installed. Please install it first."
         exit 1
     fi
-}
-
-update_finalize() {
-    echo "Finalizing update..."
-    
-    # Ensure config file exists and is not overwritten
-    if [ ! -f "$CONFIG_FILE" ]; then
-        sudo mkdir -p $(dirname "$CONFIG_FILE")
-        sudo cp "$INSTALL_DIR/config.sh" "$CONFIG_FILE"
-    fi
-    
-    echo "Update completed successfully."
-    
-    # Restart the service to apply changes
-    restart
 }
 
 start() {
@@ -79,7 +57,6 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
-                echo "Welcome message should have been sent to the admin."
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
@@ -139,9 +116,6 @@ status() {
 case "$1" in
     update)
         update
-        ;;
-    update_finalize)
-        update_finalize
         ;;
     start)
         start

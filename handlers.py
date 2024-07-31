@@ -71,9 +71,6 @@ async def process_schedule(message: Message, state: FSMContext):
 
 def register_handlers(dp):
     # Register handlers
-    router.message.register(handle_get_backup, F.text == "پشتیبان‌گیری فوری")
-    router.message.register(set_backup, F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
-    router.message.register(process_schedule, BackupStates.waiting_for_schedule)
-
-    # Include the router in the dispatcher
-    dp.include_router(router)
+    dp.message.register(handle_get_backup, F.text == "پشتیبان‌گیری فوری")
+    dp.message.register(set_backup, F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
+    dp.message.register(process_schedule, BackupStates.waiting_for_schedule)

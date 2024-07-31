@@ -33,7 +33,7 @@ async def backup_command(message: types.Message):
 
 @dp.message(lambda message: message.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup_command(message: types.Message):
-    await set_backup(message, message.bot.fsm.get_context(message.chat.id, message.from_user.id))
+    await set_backup(message, dp.current_state())
 
 async def scheduled_backup():
     config = load_config()
