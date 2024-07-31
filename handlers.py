@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F, Dispatcher
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
@@ -51,6 +52,7 @@ async def process_schedule(message: Message, state: FSMContext):
         
         config = load_config()
         config["backup_interval_minutes"] = minutes
+        config["interval_change_time"] = asyncio.get_event_loop().time()
         save_config(config)
         
         await state.clear()
