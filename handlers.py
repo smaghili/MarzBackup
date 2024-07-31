@@ -3,7 +3,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import save_config, load_config
-from backup import handle_backup
+from backup import handle_backup, create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -42,6 +42,8 @@ async def process_schedule(message: Message, state: FSMContext):
             save_config(config)
             await state.clear()
             await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+            # Perform an immediate backup
+            await create_and_send_backup(message.bot)
         except ValueError:
             await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
             return

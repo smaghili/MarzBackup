@@ -157,31 +157,4 @@ async def create_and_send_backup(bot):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(f"Error in backup script: {stderr.decode()}")
-        
-        backup_command = f"zip -r /root/marz-backup-{system}.zip {' '.join(backup_dirs)} {mysql_backup_dir}/*"
-        process = await asyncio.create_subprocess_shell(backup_command)
-        await process.communicate()
-        
-        process = await asyncio.create_subprocess_shell(f"zip -ur /root/marz-backup-{system}.zip {mysql_backup_dir}/*.sql")
-        await process.communicate()
-        
-        process = await asyncio.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
-        await process.communicate()
-        
-        caption = f"پشتیبان {system.capitalize()}\nایجاد شده توسط @sma16719\nhttps://github.com/smaghili/MarzBackup"
-        backup_file = FSInputFile(f"/root/marz-backup-{system}.zip")
-        await bot.send_document(chat_id=ADMIN_CHAT_ID, document=backup_file, caption=caption)
-        
-        print(f"{system.capitalize()} backup completed and sent successfully.")
-        return True
-    except Exception as e:
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {str(e)}")
-        print(f"An error occurred during the backup process: {str(e)}")
-        return False
-
-async def handle_backup(bot):
-    success = await create_and_send_backup(bot)
-    return success
+        stdout, stderr = await process
