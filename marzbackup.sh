@@ -62,11 +62,30 @@ start() {
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         if [ -f "$PID_FILE" ]; then
-            echo "MarzBackup is already running. Use 'marzbackup restart' to restart it."
+            PID=$(cat "$PID_FILE")
+            if ps -p $PID > /dev/null; then
+                echo "MarzBackup is already running. Use 'marzbackup restart' to restart it."
+                return
+            else
+                echo "Stale PID file found. Removing it."
+                rm "$PID_FILE"
+            fi
+        fi
+        nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
+        sleep 2  # Give some time for the bot to start
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if ps -p $PID > /dev/null; then
+                echo "Bot is running in the background. PID: $PID"
+                echo "You can check its status with 'marzbackup status'."
+                echo "To view logs, use: tail -f $LOG_FILE"
+            else
+                echo "Failed to start the bot. Check logs for details."
+                cat "$LOG_FILE"
+            fi
         else
-            nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
-            echo "Bot is running in the background. You can check its status with 'marzbackup status'."
-            echo "To view logs, use: tail -f $LOG_FILE"
+            echo "Failed to start the bot. PID file not created."
+            cat "$LOG_FILE"
         fi
     else
         echo "MarzBackup is not installed. Please install it first."
@@ -95,15 +114,24 @@ restart() {
 status() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
-        if ps -p $PID > /dev/null
-        then
+        if ps -p $PID > /dev/null; then
             echo "MarzBackup is running. PID: $PID"
+            echo "Last 10 lines of log:"
+            tail -n 10 "$LOG_FILE"
         else
             echo "MarzBackup is not running, but PID file exists. It may have crashed."
+            echo "Last 20 lines of log:"
+            tail -n 20 "$LOG_FILE"
             rm "$PID_FILE"
         fi
     else
         echo "MarzBackup is not running."
+        if [ -f "$LOG_FILE" ]; then
+            echo "Last 20 lines of log:"
+            tail -n 20 "$LOG_FILE"
+        else
+            echo "No log file found."
+        fi
     fi
 }
 
