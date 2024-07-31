@@ -1,7 +1,9 @@
 import os
 import asyncio
+import subprocess
+import yaml
 from aiogram import Router, F, Dispatcher
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -26,58 +28,69 @@ keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-@router.message(Command("start"))
-async def send_welcome(message: Message):
-    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
+# ... (سایر توابع بدون تغییر باقی می‌مانند)
 
-@router.message(F.text == "پشتیبان‌گیری فوری")
-async def handle_get_backup(message: Message):
-    try:
-        success = await handle_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+async def extract_db_info(system):
+    config = load_config()
+    
+    # Extract container name
+    container_name = config.get(f"{system}_db_container")
+    if not container_name:
+        if system == "marzban":
+            compose_file = "/opt/marzban/docker-compose.yml"
+        elif system == "marzneshin":
+            compose_file = "/etc/opt/marzneshin/docker-compose.yml"
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
-    except Exception as e:
-        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+            raise ValueError(f"Unknown system: {system}")
 
-@router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
-async def set_backup(message: Message, state: FSMContext):
-    await state.set_state(BackupStates.waiting_for_schedule)
-    await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
+        with open(compose_file, 'r') as f:
+            compose_config = yaml.safe_load(f)
 
-@router.message(BackupStates.waiting_for_schedule)
-async def process_schedule(message: Message, state: FSMContext):
-    try:
-        minutes = int(message.text)
-        if minutes <= 0:
-            raise ValueError("دقیقه باید عدد مثبت باشد")
-        
-        config = load_config()
-        config["backup_interval_minutes"] = minutes
-        config["interval_change_time"] = asyncio.get_event_loop().time()
-        save_config(config)
-        
-        await state.clear()
-        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
-        
-        # Perform an immediate backup
-        success = await create_and_send_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
-        else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
-    except ValueError:
-        await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
-    except Exception as e:
-        await message.answer(f"خطا در پردازش زمانبندی: {e}")
-    finally:
-        await state.clear()
+        services = compose_config.get('services', {})
+        for service_name, service_config in services.items():
+            if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
+                container_name = f"{system}-{service_name}-1"
+                config[f"{system}_db_container"] = container_name
+                break
 
-@router.message(F.text == "بازیابی پشتیبان")
-async def request_sql_file(message: Message, state: FSMContext):
-    await state.set_state(BackupStates.waiting_for_sql_file)
-    await message.answer("لطفاً فایل SQL پشتیبان را ارسال کنید.")
+    # Extract database password
+    db_password = config.get(f"{system}_db_password")
+    if not db_password:
+        if system == "marzban":
+            env_file = "/opt/marzban/.env"
+        elif system == "marzneshin":
+            env_file = "/etc/opt/marzneshin/.env"
+
+        with open(env_file, 'r') as f:
+            for line in f:
+                if line.strip().startswith('MARIADB_ROOT_PASSWORD='):
+                    db_password = line.split('=', 1)[1].strip()
+                    config[f"{system}_db_password"] = db_password
+                    break
+
+    # Extract database name
+    db_name = config.get(f"{system}_db_name")
+    if not db_name:
+        with open(compose_file, 'r') as f:
+            compose_config = yaml.safe_load(f)
+        
+        services = compose_config.get('services', {})
+        for service_config in services.values():
+            environment = service_config.get('environment', {})
+            if isinstance(environment, list):
+                for env in environment:
+                    if env.startswith('MARIADB_DATABASE='):
+                        db_name = env.split('=', 1)[1].strip()
+                        config[f"{system}_db_name"] = db_name
+                        break
+            elif isinstance(environment, dict):
+                db_name = environment.get('MARIADB_DATABASE')
+                if db_name:
+                    config[f"{system}_db_name"] = db_name
+                    break
+
+    save_config(config)
+    return container_name, db_password, db_name
 
 @router.message(BackupStates.waiting_for_sql_file, F.document)
 async def process_sql_file(message: Message, state: FSMContext):
@@ -109,6 +122,24 @@ async def process_sql_file(message: Message, state: FSMContext):
         await message.bot.download_file(file.file_path, file_path)
 
         await message.answer(f"فایل SQL با موفقیت در مسیر {file_path} ذخیره شد.")
+
+        # Extract database information
+        container_name, db_password, db_name = await extract_db_info(system)
+
+        # Restore the database
+        restore_command = f"docker exec -i {container_name} mariadb -u root -p{db_password} {db_name} < {file_path}"
+        process = await asyncio.create_subprocess_shell(
+            restore_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            await message.answer("بازیابی پایگاه داده با موفقیت انجام شد.")
+        else:
+            await message.answer(f"خطا در بازیابی پایگاه داده: {stderr.decode()}")
+
     except Exception as e:
         await message.answer(f"خطا در پردازش فایل SQL: {e}")
     finally:

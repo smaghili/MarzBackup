@@ -43,3 +43,11 @@ API_TOKEN = get_or_ask('API_TOKEN', "Please enter your bot token: ")
 
 # Get ADMIN_CHAT_ID
 ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
+
+# New fields for database information
+MARZBAN_DB_CONTAINER = config.get('marzban_db_container', '')
+MARZBAN_DB_PASSWORD = config.get('marzban_db_password', '')
+MARZBAN_DB_NAME = config.get('marzban_db_name', '')
+MARZNESHIN_DB_CONTAINER = config.get('marzneshin_db_container', '')
+MARZNESHIN_DB_PASSWORD = config.get('marzneshin_db_password', '')
+MARZNESHIN_DB_NAME = config.get('marzneshin_db_name', '')
