@@ -178,4 +178,9 @@ async def create_and_send_backup(bot):
         print(f"{system.capitalize()} backup completed and sent successfully.")
         return True
     except Exception as e:
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {str(e
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {str(e)}")
+        print(f"An error occurred during the backup process: {str(e)}")
+        return False
+
+async def handle_backup(bot):
+    return await create_and_send_backup(bot)

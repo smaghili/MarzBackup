@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from config import API_TOKEN, ADMIN_CHAT_ID, load_config
-from handlers import handle_backup, set_backup, process_schedule
+from handlers import handle_backup, set_backup, process_schedule, send_welcome
 from backup import create_and_send_backup
 
 # Configure logging
@@ -24,8 +24,8 @@ keyboard = ReplyKeyboardMarkup(
 )
 
 @dp.message(Command("start"))
-async def send_welcome(message: types.Message):
-    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
+async def start_command(message: types.Message):
+    await send_welcome(message)
 
 @dp.message(lambda message: message.text == "پشتیبان‌گیری فوری")
 async def backup_command(message: types.Message):

@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from config import save_config, load_config
 from backup import handle_backup, create_and_send_backup
 
@@ -13,6 +14,18 @@ class BackupStates(StatesGroup):
 router = Router()
 
 config = load_config()
+
+# Create a keyboard markup
+keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="پشتیبان‌گیری فوری")],
+        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")]
+    ],
+    resize_keyboard=True
+)
+
+async def send_welcome(message: Message):
+    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
 
 async def handle_get_backup(message: Message):
     try:
@@ -53,6 +66,8 @@ async def process_schedule(message: Message, state: FSMContext):
             return
     except Exception as e:
         await message.answer(f"خطا در پردازش زمانبندی: {e}")
+    finally:
+        await state.clear()
 
 def register_handlers(dp):
     # Register handlers
