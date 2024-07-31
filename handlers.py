@@ -132,5 +132,12 @@ async def process_sql_file(message: types.Message, state: FSMContext):
     finally:
         await state.clear()
 
+@router.message(BackupStates.waiting_for_sql_file)
+async def handle_non_sql_file(message: types.Message, state: FSMContext):
+    if not message.document or not message.document.file_name.lower().endswith('.sql'):
+        await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
+    else:
+        await process_sql_file(message, state)
+
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
