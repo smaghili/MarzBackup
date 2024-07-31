@@ -2,7 +2,6 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.enums import ParseMode
 from config import API_TOKEN, ADMIN_CHAT_ID, load_config
 from handlers import register_handlers
 from backup import create_and_send_backup
@@ -11,7 +10,7 @@ from backup import create_and_send_backup
 logging.basicConfig(level=logging.INFO)
 
 # Initialize bot and dispatcher
-bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
@@ -55,7 +54,7 @@ async def main():
     asyncio.create_task(scheduled_backup())
 
     # Start polling
-    await dp.start_polling(bot)
+    await dp.start_polling()
 
 if __name__ == '__main__':
     asyncio.run(main())
