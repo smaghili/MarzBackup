@@ -72,13 +72,14 @@ start() {
             fi
         fi
         nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
-        sleep 2  # Give some time for the bot to start
+        sleep 5  # Give more time for the bot to start and send the welcome message
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
             if ps -p $PID > /dev/null; then
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
+                echo "Welcome message should have been sent to the admin."
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
