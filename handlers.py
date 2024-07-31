@@ -107,9 +107,9 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         # Extract database information from config
         container_name = config.get(f"{system}_db_container")
         db_password = config.get(f"{system}_db_password")
-        db_name = config.get(f"{system}_db_name", system)  # Use system name as default database name
+        db_name = config.get(f"{system}_db_name")  # Use the system-specific db_name
 
-        if not container_name or not db_password:
+        if not container_name or not db_password or not db_name:
             await message.answer("اطلاعات پایگاه داده در فایل کانفیگ یافت نشد.")
             return
 
