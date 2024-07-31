@@ -1,10 +1,10 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from config import API_TOKEN, ADMIN_CHAT_ID, load_config
-from handlers import handle_backup, set_backup, process_schedule, send_welcome
+from handlers import register_handlers
 from backup import create_and_send_backup
 
 # Configure logging
@@ -12,28 +12,8 @@ logging.basicConfig(level=logging.INFO)
 
 # Initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
-
-# Create a keyboard markup
-keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="پشتیبان‌گیری فوری")],
-        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")]
-    ],
-    resize_keyboard=True
-)
-
-@dp.message(Command("start"))
-async def start_command(message: types.Message):
-    await send_welcome(message)
-
-@dp.message(lambda message: message.text == "پشتیبان‌گیری فوری")
-async def backup_command(message: types.Message):
-    await handle_backup(message.bot)
-
-@dp.message(lambda message: message.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
-async def set_backup_command(message: types.Message):
-    await set_backup(message, dp[message.from_user.id])
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
 async def scheduled_backup():
     while True:
@@ -45,9 +25,20 @@ async def scheduled_backup():
         else:
             await asyncio.sleep(60)  # Check every minute if interval is not set
 
+async def on_startup(bot: Bot):
+    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات MarzBackup راه‌اندازی شد.")
+
 async def main():
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات MarzBackup راه‌اندازی شد.", reply_markup=keyboard)
+    # Register all handlers
+    register_handlers(dp)
+
+    # Set up startup hook
+    dp.startup.register(on_startup)
+
+    # Start scheduled backup task
     asyncio.create_task(scheduled_backup())
+
+    # Start polling
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
