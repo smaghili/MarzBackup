@@ -3,8 +3,8 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config
-from handlers import handle_backup, handle_user_traffic_status, set_backup, process_schedule
+from config import API_TOKEN, ADMIN_CHAT_ID, load_config
+from handlers import handle_backup, set_backup, process_schedule
 from backup import create_and_send_backup
 
 # Configure logging
@@ -18,8 +18,7 @@ dp = Dispatcher()
 keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="پشتیبان‌گیری فوری")],
-        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
-        [KeyboardButton(text="وضعیت مصرف کاربران")]
+        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")]
     ],
     resize_keyboard=True
 )
@@ -30,15 +29,11 @@ async def send_welcome(message: types.Message):
 
 @dp.message(lambda message: message.text == "پشتیبان‌گیری فوری")
 async def backup_command(message: types.Message):
-    await handle_backup(bot)
+    await handle_backup(message.bot)
 
 @dp.message(lambda message: message.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup_command(message: types.Message):
-    await set_backup(message, dp.current_state())
-
-@dp.message(lambda message: message.text == "وضعیت مصرف کاربران")
-async def traffic_status_command(message: types.Message):
-    await handle_user_traffic_status(message)
+    await set_backup(message, message.bot.fsm.get_context(message.chat.id, message.from_user.id))
 
 async def scheduled_backup():
     config = load_config()

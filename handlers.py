@@ -43,43 +43,22 @@ async def process_schedule(message: Message, state: FSMContext):
             await state.clear()
             await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
             # Perform an immediate backup
-            await create_and_send_backup(message.bot)
+            success = await create_and_send_backup(message.bot)
+            if success:
+                await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
+            else:
+                await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
         except ValueError:
             await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
             return
     except Exception as e:
         await message.answer(f"خطا در پردازش زمانبندی: {e}")
 
-async def handle_restore_backup(message: Message):
-    try:
-        # Implement the logic to restore backup
-        await message.answer("بازیابی پشتیبان انجام شد.")
-    except Exception as e:
-        await message.answer(f"خطا در بازیابی پشتیبان: {e}")
-
-async def handle_document(message: Message):
-    try:
-        if message.document and message.document.file_name.endswith('.sql'):
-            # Process the document
-            await message.answer("فایل SQL پردازش شد.")
-    except Exception as e:
-        await message.answer(f"خطا در پردازش فایل: {e}")
-
-async def handle_user_traffic_status(message: Message):
-    try:
-        # Implement the logic to handle user traffic status
-        await message.answer("وضعیت مصرف کاربران به‌روزرسانی شد.")
-    except Exception as e:
-        await message.answer(f"خطا در وضعیت مصرف کاربران: {e}")
-
 def register_handlers(dp):
     # Register handlers
     router.message.register(handle_get_backup, F.text == "پشتیبان‌گیری فوری")
     router.message.register(set_backup, F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
     router.message.register(process_schedule, BackupStates.waiting_for_schedule)
-    router.message.register(handle_restore_backup, F.text == "بازیابی پشتیبان")
-    router.message.register(handle_document, F.document.file_name.endswith('.sql'))
-    router.message.register(handle_user_traffic_status, F.text == "وضعیت مصرف کاربران")
 
     # Include the router in the dispatcher
     dp.include_router(router)
