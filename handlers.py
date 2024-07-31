@@ -1,6 +1,7 @@
+import os
 import asyncio
 from aiogram import Router, F, Dispatcher
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -10,6 +11,7 @@ from backup import handle_backup, create_and_send_backup
 # Define states
 class BackupStates(StatesGroup):
     waiting_for_schedule = State()
+    waiting_for_sql_file = State()
 
 # Create a router instance
 router = Router()
@@ -18,7 +20,8 @@ router = Router()
 keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="پشتیبان‌گیری فوری")],
-        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")]
+        [KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
+        [KeyboardButton(text="بازیابی پشتیبان")]
     ],
     resize_keyboard=True
 )
@@ -68,6 +71,46 @@ async def process_schedule(message: Message, state: FSMContext):
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
         await message.answer(f"خطا در پردازش زمانبندی: {e}")
+    finally:
+        await state.clear()
+
+@router.message(F.text == "بازیابی پشتیبان")
+async def request_sql_file(message: Message, state: FSMContext):
+    await state.set_state(BackupStates.waiting_for_sql_file)
+    await message.answer("لطفاً فایل SQL پشتیبان را ارسال کنید.")
+
+@router.message(BackupStates.waiting_for_sql_file, F.document)
+async def process_sql_file(message: Message, state: FSMContext):
+    try:
+        if not message.document.file_name.lower().endswith('.sql'):
+            await message.answer("لطفاً یک فایل با پسوند .sql ارسال کنید.")
+            return
+
+        # Determine the system and backup directory
+        marzban_dir = "/opt/marzban"
+        marzneshin_dir = "/etc/opt/marzneshin"
+        if os.path.exists(marzban_dir):
+            system = "marzban"
+            backup_dir = "/var/lib/marzban/mysql/db-backup"
+        elif os.path.exists(marzneshin_dir):
+            system = "marzneshin"
+            backup_dir = "/var/lib/marzneshin/mysql/db-backup"
+        else:
+            await message.answer("خطا: سیستم مرزبان یا مرزنشین شناسایی نشد.")
+            await state.clear()
+            return
+
+        # Create backup directory if it doesn't exist
+        os.makedirs(backup_dir, exist_ok=True)
+
+        # Download and save the file
+        file = await message.bot.get_file(message.document.file_id)
+        file_path = os.path.join(backup_dir, message.document.file_name)
+        await message.bot.download_file(file.file_path, file_path)
+
+        await message.answer(f"فایل SQL با موفقیت در مسیر {file_path} ذخیره شد.")
+    except Exception as e:
+        await message.answer(f"خطا در پردازش فایل SQL: {e}")
     finally:
         await state.clear()
 
