@@ -1,5 +1,6 @@
 import json
 import os
+import yaml
 
 CONFIG_FILE_PATH = '/opt/marzbackup/config.json'
 
@@ -28,9 +29,8 @@ def save_config(config):
     except Exception as e:
         print(f"Error saving config file: {e}")
 
-config = load_config()
-
 def get_or_ask(key, prompt):
+    config = load_config()
     if key in config:
         return config[key]
     value = input(prompt).strip()
@@ -38,13 +38,51 @@ def get_or_ask(key, prompt):
     save_config(config)
     return value
 
+def get_db_name(system):
+    if system == "marzban":
+        compose_file = "/opt/marzban/docker-compose.yml"
+    elif system == "marzneshin":
+        compose_file = "/etc/opt/marzneshin/docker-compose.yml"
+    else:
+        raise ValueError(f"Unknown system: {system}")
+
+    try:
+        with open(compose_file, 'r') as f:
+            compose_config = yaml.safe_load(f)
+        
+        services = compose_config.get('services', {})
+        for service in services.values():
+            environment = service.get('environment', {})
+            if isinstance(environment, list):
+                for env in environment:
+                    if env.startswith('MARIADB_DATABASE='):
+                        return env.split('=', 1)[1].strip()
+            elif isinstance(environment, dict):
+                if 'MARIADB_DATABASE' in environment:
+                    return environment['MARIADB_DATABASE']
+    except Exception as e:
+        print(f"Error reading docker-compose.yml: {e}")
+    
+    return system  # default to system name if not found
+
+# Load existing config
+config = load_config()
+
 # Get API_TOKEN
 API_TOKEN = get_or_ask('API_TOKEN', "Please enter your bot token: ")
 
 # Get ADMIN_CHAT_ID
 ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 
-# New fields for database information
+# Determine the system and get the database name
+system = "marzban" if os.path.exists("/opt/marzban") else "marzneshin"
+db_name = get_db_name(system)
+
+# Save the database name in the config
+config[f'{system}_db_name'] = db_name
+save_config(config)
+
+# Other database fields
 MARZBAN_DB_CONTAINER = config.get('marzban_db_container', '')
 MARZBAN_DB_PASSWORD = config.get('marzban_db_password', '')
 MARZBAN_DB_NAME = config.get('marzban_db_name', '')
