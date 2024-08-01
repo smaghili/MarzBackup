@@ -8,6 +8,8 @@ CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -151,30 +153,88 @@ status() {
 }
 
 install_user_usage() {
+    echo "Checking user usage tracking system..."
+    
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system is already running."
+            return
+        else
+            echo "Stale PID file found. Removing it."
+            rm "$USAGE_PID_FILE"
+        fi
+    fi
+    
     echo "Installing user usage tracking system..."
     
-    # Copy SQL and Python files to the installation directory
-    sudo cp "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
-    sudo cp "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
+    # Check if jq is installed
+    if ! command -v jq &> /dev/null; then
+        echo "jq is not installed. Installing jq..."
+        sudo apt-get update && sudo apt-get install -y jq
+    fi
+    
+    # Copy SQL and Python files to the installation directory (force overwrite)
+    sudo cp -f "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
+    sudo cp -f "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
     
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
     
     # Read database information directly from config.json
-    config=$(cat "$CONFIG_DIR/config.json")
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: Config file not found at $CONFIG_FILE"
+        exit 1
+    fi
+    
+    config=$(cat "$CONFIG_FILE")
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
     db_name=$(echo $config | jq -r '.db_name')
 
+    # Validate database information
+    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
+        echo "Error: Missing database configuration. Please check your config.json file."
+        exit 1
+    fi
+
+    # Check if the database container is running
+    if ! docker ps | grep -q "$db_container"; then
+        echo "Error: Database container $db_container is not running."
+        exit 1
+    fi
+
     # Execute SQL script
     echo "Setting up database structures..."
-    docker exec -i "$db_container" mariadb -u root -p"$db_password" < "$INSTALL_DIR/hourlyUsage.sql"
+    docker exec -i "$db_container" mysql -u root -p"$db_password" "$db_name" < "$INSTALL_DIR/hourlyUsage.sql"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
+        exit 1
+    fi
     
     # Start hourly report script
     echo "Starting hourly report script..."
     nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    echo $! > "$USAGE_PID_FILE"
     
     echo "User usage tracking system installed and started."
+}
+
+stop_user_usage() {
+    echo "Stopping user usage tracking system..."
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            kill $PID
+            rm "$USAGE_PID_FILE"
+            echo "User usage tracking system stopped."
+        else
+            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
+            rm "$USAGE_PID_FILE"
+        fi
+    else
+        echo "User usage tracking system is not running."
+    fi
 }
 
 case "$1" in
@@ -185,7 +245,11 @@ case "$1" in
         start
         ;;
     stop)
-        stop
+        if [ "$2" == "user-usage" ]; then
+            stop_user_usage
+        else
+            stop
+        fi
         ;;
     restart)
         restart
@@ -197,7 +261,7 @@ case "$1" in
         install_user_usage
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install-user-usage}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart|status|install-user-usage}"
         exit 1
         ;;
 esac
