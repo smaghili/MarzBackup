@@ -15,6 +15,9 @@ class BackupStates(StatesGroup):
     waiting_for_schedule = State()
     waiting_for_sql_file = State()
 
+class ReportIntervalStates(StatesGroup):
+    waiting_for_interval = State()
+
 # Create a router instance
 router = Router()
 
@@ -23,7 +26,8 @@ keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
         [types.KeyboardButton(text="پشتیبان‌گیری فوری")],
         [types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
-        [types.KeyboardButton(text="بازیابی پشتیبان")]
+        [types.KeyboardButton(text="بازیابی پشتیبان")],
+        [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
     ],
     resize_keyboard=True
 )
@@ -105,9 +109,9 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         await message.bot.download_file(file.file_path, file_path)
 
         # Extract database information from config
-        container_name = config.get(f"{system}_db_container")
-        db_password = config.get(f"{system}_db_password")
-        db_name = config.get(f"{system}_db_name")  # Use the system-specific db_name
+        container_name = config.get("db_container")
+        db_password = config.get("db_password")
+        db_name = config.get("db_name")
 
         if not container_name or not db_password or not db_name:
             await message.answer("اطلاعات پایگاه داده در فایل کانفیگ یافت نشد.")
@@ -131,6 +135,27 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         await message.answer(f"خطا در پردازش فایل SQL: {e}")
     finally:
         await state.clear()
+
+@router.message(F.text == "تغییر زمان گزارش مصرف کاربران")
+async def change_report_interval(message: types.Message, state: FSMContext):
+    await state.set_state(ReportIntervalStates.waiting_for_interval)
+    await message.answer("لطفا زمان گزارش مصرف کاربران را بر اساس دقیقه وارد کنید (توجه کنید مدت زمان‌های پایین باعث افزایش حجم پایگاه داده می‌شود. عدد پیشنهادی 60 است):")
+
+@router.message(ReportIntervalStates.waiting_for_interval)
+async def process_report_interval(message: types.Message, state: FSMContext):
+    try:
+        interval = int(message.text)
+        if interval <= 0:
+            raise ValueError("Interval must be positive")
+        
+        config = load_config()
+        config['report_interval'] = interval
+        save_config(config)
+        
+        await state.clear()
+        await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت.")
+    except ValueError:
+        await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
