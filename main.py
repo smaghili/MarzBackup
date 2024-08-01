@@ -55,7 +55,7 @@ async def validate_config():
 
 async def on_startup(bot: Bot):
     await validate_config()
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been started and configurations have been checked.")
+    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات مرزبکاپ با موفقیت راه اندازی شد!")
 
 async def main():
     # Register all handlers
