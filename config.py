@@ -151,8 +151,11 @@ def update_config():
         updated = True
 
     # Remove old system-specific keys
-    for old_key in ["marzban_db_container", "marzban_db_password", "marzban_db_name",
-                    "marzneshin_db_container", "marzneshin_db_password", "marzneshin_db_name"]:
+    old_keys = [
+        "marzban_db_container", "marzban_db_password", "marzban_db_name",
+        "marzneshin_db_container", "marzneshin_db_password", "marzneshin_db_name"
+    ]
+    for old_key in old_keys:
         if old_key in config:
             del config[old_key]
             updated = True
