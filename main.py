@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
@@ -11,19 +12,38 @@ from backup import create_and_send_backup
 logging.basicConfig(level=logging.INFO)
 
 # Initialize bot and dispatcher
-bot = Bot(token=API_TOKEN)
+bot = None
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+async def init_bot():
+    global bot
+    global API_TOKEN
+    global ADMIN_CHAT_ID
+    
+    while True:
+        try:
+            bot = Bot(token=API_TOKEN)
+            await bot.get_me()
+            break
+        except Exception as e:
+            logging.error(f"Invalid bot token: {e}")
+            API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
+    
+    # Validate ADMIN_CHAT_ID
+    while True:
+        try:
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text="Validating admin chat ID...")
+            break
+        except Exception as e:
+            logging.error(f"Invalid admin chat ID: {e}")
+            ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 
 async def validate_config():
     config = load_config()
     changes_made = False
 
     try:
-        # Ensure API_TOKEN and ADMIN_CHAT_ID are set
-        API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
-        ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
-
         # Validate and update db_container
         if config.get("db_container") != DB_CONTAINER:
             config["db_container"] = DB_CONTAINER
@@ -68,6 +88,8 @@ async def on_startup(bot: Bot):
     await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been successfully started!")
 
 async def main():
+    await init_bot()
+    
     # Register all handlers
     register_handlers(dp)
 
