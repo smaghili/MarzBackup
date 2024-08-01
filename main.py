@@ -44,6 +44,12 @@ async def validate_config():
             changes_made = True
             logging.info(f"Updated db_type to {DB_TYPE}")
 
+        # Ensure report_interval exists in config
+        if "report_interval" not in config:
+            config["report_interval"] = 60  # Default to 60 minutes
+            changes_made = True
+            logging.info("Added default report_interval of 60 minutes")
+
     except Exception as e:
         logging.error(f"Error validating config: {str(e)}")
 
