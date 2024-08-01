@@ -49,71 +49,67 @@ def get_or_ask(key, prompt):
     save_config(config)
     return value
 
-def get_db_container_name(system):
+def get_db_info(system):
     if system == "marzban":
         compose_file = "/opt/marzban/docker-compose.yml"
-    elif system == "marzneshin":
-        compose_file = "/etc/opt/marzneshin/docker-compose.yml"
-    else:
-        raise ValueError(f"Unknown system: {system}")
-
-    try:
-        with open(compose_file, 'r') as f:
-            compose_config = yaml.safe_load(f)
-        
-        services = compose_config.get('services', {})
-        for service_name, service_config in services.items():
-            if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
-                return f"{os.path.basename(os.path.dirname(compose_file))}-{service_name}-1"
-    except Exception as e:
-        print(f"Error reading docker-compose.yml: {e}")
-    
-    return ""  # Return empty string if not found
-
-def get_db_password(system):
-    if system == "marzban":
         env_file = "/opt/marzban/.env"
     elif system == "marzneshin":
+        compose_file = "/etc/opt/marzneshin/docker-compose.yml"
         env_file = "/etc/opt/marzneshin/.env"
     else:
         raise ValueError(f"Unknown system: {system}")
 
-    try:
-        with open(env_file, 'r') as f:
-            for line in f:
-                if line.startswith('MYSQL_ROOT_PASSWORD='):
-                    return line.split('=', 1)[1].strip()
-    except Exception as e:
-        print(f"Error reading .env file: {e}")
-    
-    return ""  # Return empty string if not found
+    db_container = ""
+    db_password = ""
+    db_name = ""
 
-def get_db_name(system):
-    if system == "marzban":
-        compose_file = "/opt/marzban/docker-compose.yml"
-    elif system == "marzneshin":
-        compose_file = "/etc/opt/marzneshin/docker-compose.yml"
-    else:
-        raise ValueError(f"Unknown system: {system}")
-
+    # Get container name from docker-compose.yml
     try:
         with open(compose_file, 'r') as f:
             compose_config = yaml.safe_load(f)
-        
         services = compose_config.get('services', {})
-        for service in services.values():
-            environment = service.get('environment', {})
-            if isinstance(environment, list):
-                for env in environment:
-                    if env.startswith('MARIADB_DATABASE='):
-                        return env.split('=', 1)[1].strip()
-            elif isinstance(environment, dict):
-                if 'MARIADB_DATABASE' in environment:
-                    return environment['MARIADB_DATABASE']
+        for service_name, service_config in services.items():
+            if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
+                db_container = f"{os.path.basename(os.path.dirname(compose_file))}-{service_name}-1"
+                break
     except Exception as e:
         print(f"Error reading docker-compose.yml: {e}")
-    
-    return system  # default to system name if not found
+
+    # Get password and database name from .env file
+    try:
+        with open(env_file, 'r') as f:
+            for line in f:
+                # Check for various possible password environment variables
+                if line.startswith(('MARIADB_ROOT_PASSWORD=', 'MYSQL_ROOT_PASSWORD=', 'DB_PASSWORD=')):
+                    db_password = line.split('=', 1)[1].strip()
+                # Check for various possible database name environment variables
+                elif line.startswith(('MARIADB_DATABASE=', 'MYSQL_DATABASE=', 'DB_NAME=')):
+                    db_name = line.split('=', 1)[1].strip()
+    except Exception as e:
+        print(f"Error reading .env file: {e}")
+
+    # If db_name is not found in .env, use the system name as default
+    if not db_name:
+        db_name = system
+
+    # If we still don't have a password, try to get it from docker-compose.yml
+    if not db_password:
+        try:
+            for service in services.values():
+                environment = service.get('environment', {})
+                if isinstance(environment, list):
+                    for env in environment:
+                        if env.startswith(('MARIADB_ROOT_PASSWORD=', 'MYSQL_ROOT_PASSWORD=', 'DB_PASSWORD=')):
+                            db_password = env.split('=', 1)[1].strip()
+                            break
+                elif isinstance(environment, dict):
+                    db_password = environment.get('MARIADB_ROOT_PASSWORD') or environment.get('MYSQL_ROOT_PASSWORD') or environment.get('DB_PASSWORD', '')
+                if db_password:
+                    break
+        except Exception as e:
+            print(f"Error reading password from docker-compose.yml: {e}")
+
+    return db_container, db_password, db_name
 
 def update_config():
     config = load_config()
@@ -128,27 +124,29 @@ def update_config():
         print("Neither Marzban nor Marzneshin installation found.")
         return
 
-    try:
-        # Update db_container
-        db_container = get_db_container_name(system)
-        if config.get("db_container") != db_container:
-            config["db_container"] = db_container
-            updated = True
+    db_container, db_password, db_name = get_db_info(system)
 
-        # Update db_password
-        db_password = get_db_password(system)
-        if config.get("db_password") != db_password:
-            config["db_password"] = db_password
-            updated = True
+    # Update db_container
+    if config.get("db_container") != db_container:
+        config["db_container"] = db_container
+        updated = True
 
-        # Update db_name
-        db_name = get_db_name(system)
-        if config.get("db_name") != db_name:
-            config["db_name"] = db_name
-            updated = True
+    # Update db_password
+    if config.get("db_password") != db_password:
+        config["db_password"] = db_password
+        updated = True
 
-    except Exception as e:
-        print(f"Error updating config: {str(e)}")
+    # Update db_name
+    if config.get("db_name") != db_name:
+        config["db_name"] = db_name
+        updated = True
+
+    # Remove old system-specific keys
+    for old_key in ["marzban_db_container", "marzban_db_password", "marzban_db_name",
+                    "marzneshin_db_container", "marzneshin_db_password", "marzneshin_db_name"]:
+        if old_key in config:
+            del config[old_key]
+            updated = True
 
     if updated:
         save_config(config)
@@ -168,7 +166,10 @@ ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 # Update the config with latest database information
 update_config()
 
-# Other database fields (now using generic names)
+# Reload config after update
+config = load_config()
+
+# Get database fields
 DB_CONTAINER = config.get('db_container', '')
 DB_PASSWORD = config.get('db_password', '')
 DB_NAME = config.get('db_name', '')
