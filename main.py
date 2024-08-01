@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
-from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
+from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE, get_or_ask
 from handlers import register_handlers
 from backup import create_and_send_backup
 
@@ -20,6 +20,10 @@ async def validate_config():
     changes_made = False
 
     try:
+        # Ensure API_TOKEN and ADMIN_CHAT_ID are set
+        API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
+        ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
+
         # Validate and update db_container
         if config.get("db_container") != DB_CONTAINER:
             config["db_container"] = DB_CONTAINER
@@ -61,7 +65,7 @@ async def validate_config():
 
 async def on_startup(bot: Bot):
     await validate_config()
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات مرزبکاپ با موفقیت راه اندازی شد!")
+    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been successfully started!")
 
 async def main():
     # Register all handlers
