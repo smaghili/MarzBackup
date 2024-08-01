@@ -1,6 +1,7 @@
 import json
 import os
 import yaml
+import sys
 
 CONFIG_FILE_PATH = '/opt/marzbackup/config.json'
 VERSION_FILE_PATH = '/opt/marzbackup/version.json'
@@ -42,11 +43,20 @@ def get_installed_version():
 
 def get_or_ask(key, prompt):
     config = load_config()
-    if key not in config:
-        value = input(prompt).strip()
-        config[key] = value
-        save_config(config)
-    return config[key]
+    while True:
+        if key in config:
+            return config[key]
+        try:
+            value = input(prompt).strip()
+            if value:
+                config[key] = value
+                save_config(config)
+                return value
+            else:
+                print("Value cannot be empty. Please try again.")
+        except EOFError:
+            print("Unable to read input. Please run the script in an interactive environment.")
+            sys.exit(1)
 
 def get_db_info(system):
     if system == "marzban":
