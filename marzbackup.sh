@@ -174,9 +174,20 @@ install_user_usage() {
         sudo apt-get update && sudo apt-get install -y jq
     fi
     
-    # Copy SQL and Python files to the installation directory (force overwrite)
-    sudo cp -f "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
-    sudo cp -f "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
+    # Check and copy SQL and Python files if needed
+    if [ ! -f "$INSTALL_DIR/hourlyUsage.sql" ]; then
+        echo "Copying hourlyUsage.sql to installation directory..."
+        sudo cp "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
+    else
+        echo "hourlyUsage.sql already exists in the installation directory."
+    fi
+
+    if [ ! -f "$INSTALL_DIR/hourlyReport.py" ]; then
+        echo "Copying hourlyReport.py to installation directory..."
+        sudo cp "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
+    else
+        echo "hourlyReport.py already exists in the installation directory."
+    fi
     
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
@@ -191,9 +202,10 @@ install_user_usage() {
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
     db_name=$(echo $config | jq -r '.db_name')
+    db_type=$(echo $config | jq -r '.db_type')
 
     # Validate database information
-    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
+    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ] || [ -z "$db_type" ]; then
         echo "Error: Missing database configuration. Please check your config.json file."
         exit 1
     fi
@@ -205,8 +217,8 @@ install_user_usage() {
     fi
 
     # Execute SQL script
-    echo "Setting up database structures..."
-    docker exec -i "$db_container" mysql -u root -p"$db_password" "$db_name" < "$INSTALL_DIR/hourlyUsage.sql"
+    echo "Setting up database structures using $db_type..."
+    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' $db_name" < "$INSTALL_DIR/hourlyUsage.sql"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
         exit 1
