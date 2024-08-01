@@ -154,6 +154,10 @@ def update_config():
     else:
         print("Config file is up to date")
 
+def get_db_name():
+    config = load_config()
+    return config.get('db_name', '')
+
 # Load existing config
 config = load_config()
 
@@ -172,7 +176,7 @@ config = load_config()
 # Get database fields
 DB_CONTAINER = config.get('db_container', '')
 DB_PASSWORD = config.get('db_password', '')
-DB_NAME = config.get('db_name', '')
+DB_NAME = get_db_name()
 
 # Add this line at the end of the file
 INSTALLED_VERSION = get_installed_version()
