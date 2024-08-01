@@ -3,6 +3,7 @@ import os
 import yaml
 
 CONFIG_FILE_PATH = '/opt/marzbackup/config.json'
+VERSION_FILE_PATH = '/opt/marzbackup/version.json'
 
 def load_config():
     try:
@@ -28,6 +29,16 @@ def save_config(config):
             json.dump(config, file, indent=4)
     except Exception as e:
         print(f"Error saving config file: {e}")
+
+def get_installed_version():
+    try:
+        with open(VERSION_FILE_PATH, 'r') as file:
+            version_info = json.load(file)
+        return version_info.get('installed_version', 'stable')
+    except FileNotFoundError:
+        return 'stable'
+    except json.JSONDecodeError:
+        return 'stable'
 
 def get_or_ask(key, prompt):
     config = load_config()
@@ -89,3 +100,6 @@ MARZBAN_DB_NAME = config.get('marzban_db_name', '')
 MARZNESHIN_DB_CONTAINER = config.get('marzneshin_db_container', '')
 MARZNESHIN_DB_PASSWORD = config.get('marzneshin_db_password', '')
 MARZNESHIN_DB_NAME = config.get('marzneshin_db_name', '')
+
+# Add this line at the end of the file
+INSTALLED_VERSION = get_installed_version()
