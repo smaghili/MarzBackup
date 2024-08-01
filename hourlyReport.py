@@ -4,8 +4,9 @@ import json
 import os
 from datetime import datetime, timedelta
 
+INSTALL_DIR = "/opt/MarzBackup"
 CONFIG_FILE = '/opt/marzbackup/config.json'
-SQL_FILE = '/opt/MarzBackup/hourlyUsage.sql'
+SQL_FILE = os.path.join(INSTALL_DIR, 'hourlyUsage.sql')
 
 def load_config():
     with open(CONFIG_FILE, 'r') as file:
@@ -45,7 +46,56 @@ def setup_database():
         print("Failed to set up the database.")
         raise RuntimeError("Database setup failed")
 
-# ... (other functions remain the same)
+def insert_usage_data():
+    sql = "CALL insert_current_usage();"
+    result = execute_sql(sql)
+    if result is not None:
+        print(f"Inserted usage snapshot at {datetime.now()}")
+    else:
+        print("Failed to insert usage snapshot")
+
+def calculate_and_display_hourly_usage():
+    sql = "CALL calculate_hourly_usage();"
+    result = execute_sql(sql)
+    if result is not None:
+        print(f"Usage in the last hour:\n{result}")
+    else:
+        print("Failed to calculate hourly usage")
+
+def cleanup_old_data():
+    sql = """
+    DELETE FROM user_usage_snapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM user_hourly_usage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    INSERT INTO cleanup_log (cleanup_time) VALUES (NOW());
+    """
+    result = execute_sql(sql)
+    if result is not None:
+        print(f"Cleaned up data older than one year at {datetime.now()}")
+    else:
+        print("Failed to clean up old data")
+
+def should_run_cleanup():
+    sql = "SELECT MAX(cleanup_time) FROM cleanup_log;"
+    result = execute_sql(sql)
+    if result is not None:
+        result = result.strip().split('\n')[-1]  # Get the last line
+        if result.lower() == 'null' or result == '':
+            return True  # If no cleanup has been done, we should run it
+        try:
+            last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+            return datetime.now() - last_cleanup > timedelta(days=365)  # Run cleanup annually
+        except ValueError:
+            print(f"Unexpected date format: {result}")
+            return False
+    return False
+
+def get_historical_hourly_usage(start_time, end_time):
+    sql = f"CALL get_historical_hourly_usage('{start_time}', '{end_time}');"
+    result = execute_sql(sql)
+    if result is not None:
+        print(f"Historical hourly usage between {start_time} and {end_time}:\n{result}")
+    else:
+        print("Failed to get historical hourly usage")
 
 def main():
     print("Starting usage tracking system...")

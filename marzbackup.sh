@@ -157,19 +157,18 @@ install_user_usage() {
     sudo cp "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
     sudo cp "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
     
-    # Load config (this function was previously implemented and includes checking and updating information)
+    # Load config and update it
     python3 "$INSTALL_DIR/config.py"
     
+    # Read database information directly from config.json
+    config=$(cat "$CONFIG_DIR/config.json")
+    db_container=$(echo $config | jq -r '.db_container')
+    db_password=$(echo $config | jq -r '.db_password')
+    db_name=$(echo $config | jq -r '.db_name')
+
     # Execute SQL script
     echo "Setting up database structures..."
-    db_container=$(python3 -c "from config import DB_CONTAINER; print(DB_CONTAINER)")
-    db_password=$(python3 -c "from config import DB_PASSWORD; print(DB_PASSWORD)")
-    db_name=$(python3 -c "from config import DB_NAME; print(DB_NAME)")
     docker exec -i "$db_container" mariadb -u root -p"$db_password" < "$INSTALL_DIR/hourlyUsage.sql"
-    
-    # Install required Python packages
-    echo "Installing required Python packages..."
-    pip3 install subprocess
     
     # Start hourly report script
     echo "Starting hourly report script..."
