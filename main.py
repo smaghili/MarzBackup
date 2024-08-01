@@ -3,9 +3,9 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
-from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME
+from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
 from handlers import register_handlers
-from backup import create_and_send_backup, get_db_container_name, get_db_password
+from backup import create_and_send_backup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,16 +21,14 @@ async def validate_config():
 
     try:
         # Validate and update db_container
-        db_container = await get_db_container_name()
-        if config.get("db_container") != db_container:
-            config["db_container"] = db_container
+        if config.get("db_container") != DB_CONTAINER:
+            config["db_container"] = DB_CONTAINER
             changes_made = True
-            logging.info(f"Updated db_container to {db_container}")
+            logging.info(f"Updated db_container to {DB_CONTAINER}")
 
         # Validate and update db_password
-        db_password = get_db_password()
-        if config.get("db_password") != db_password:
-            config["db_password"] = db_password
+        if config.get("db_password") != DB_PASSWORD:
+            config["db_password"] = DB_PASSWORD
             changes_made = True
             logging.info("Updated db_password")
 
@@ -39,6 +37,12 @@ async def validate_config():
             config["db_name"] = DB_NAME
             changes_made = True
             logging.info(f"Updated db_name to {DB_NAME}")
+
+        # Validate and update db_type
+        if config.get("db_type") != DB_TYPE:
+            config["db_type"] = DB_TYPE
+            changes_made = True
+            logging.info(f"Updated db_type to {DB_TYPE}")
 
     except Exception as e:
         logging.error(f"Error validating config: {str(e)}")
