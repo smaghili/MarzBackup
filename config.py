@@ -42,12 +42,11 @@ def get_installed_version():
 
 def get_or_ask(key, prompt):
     config = load_config()
-    if key in config:
-        return config[key]
-    value = input(prompt).strip()
-    config[key] = value
-    save_config(config)
-    return value
+    if key not in config:
+        value = input(prompt).strip()
+        config[key] = value
+        save_config(config)
+    return config[key]
 
 def get_db_info(system):
     if system == "marzban":
@@ -134,21 +133,25 @@ def update_config():
     if config.get("db_container") != db_container:
         config["db_container"] = db_container
         updated = True
+        print(f"Updated db_container to {db_container}")
 
     # Update db_password
     if config.get("db_password") != db_password:
         config["db_password"] = db_password
         updated = True
+        print("Updated db_password")
 
     # Update db_name
     if config.get("db_name") != db_name:
         config["db_name"] = db_name
         updated = True
+        print(f"Updated db_name to {db_name}")
 
     # Update db_type
     if config.get("db_type") != db_type:
         config["db_type"] = db_type
         updated = True
+        print(f"Updated db_type to {db_type}")
 
     # Remove old system-specific keys
     old_keys = [
@@ -174,7 +177,7 @@ def get_db_name():
 config = load_config()
 
 # Get API_TOKEN
-API_TOKEN = get_or_ask('API_TOKEN', "Please enter your bot token: ")
+API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
 
 # Get ADMIN_CHAT_ID
 ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
