@@ -7,22 +7,49 @@ INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
 PID_FILE="/var/run/marzbackup.pid"
+VERSION_FILE="$CONFIG_DIR/version.json"
+
+get_current_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
+        echo $version
+    else
+        echo "stable"  # Default to stable if version file doesn't exist
+    fi
+}
 
 update() {
     echo "Checking for updates..."
+    current_version=$(get_current_version)
+    
+    if [ "$2" == "dev" ]; then
+        BRANCH="dev"
+        NEW_VERSION="dev"
+    elif [ "$2" == "stable" ]; then
+        BRANCH="main"
+        NEW_VERSION="stable"
+    elif [ -z "$2" ]; then
+        BRANCH=$([ "$current_version" == "dev" ] && echo "dev" || echo "main")
+        NEW_VERSION=$current_version
+    else
+        echo "Invalid version specified. Use 'dev' or 'stable'."
+        exit 1
+    fi
+
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         git fetch origin
+        git checkout $BRANCH
         LOCAL=$(git rev-parse HEAD)
         REMOTE=$(git rev-parse @{u})
 
-        if [ "$LOCAL" = "$REMOTE" ]; then
-            echo "You are already using the latest version."
+        if [ "$LOCAL" = "$REMOTE" ] && [ "$NEW_VERSION" == "$current_version" ]; then
+            echo "You are already using the latest $NEW_VERSION version."
             exit 0
         else
-            echo "Updating MarzBackup..."
+            echo "Updating MarzBackup to $NEW_VERSION version..."
             stop
-            git reset --hard origin/main
+            git reset --hard origin/$BRANCH
             pip3 install -r requirements.txt
             
             # Update marzbackup.sh
@@ -31,6 +58,7 @@ update() {
                 sudo chmod +x "$TEMP_SCRIPT"
                 echo "New version of marzbackup.sh downloaded. Applying update..."
                 sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
+                echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
                 echo "marzbackup.sh has been updated. Restarting with new version..."
                 exec "$SCRIPT_PATH" start
             else
@@ -122,9 +150,37 @@ status() {
     fi
 }
 
+install_user_usage() {
+    echo "Installing user usage tracking system..."
+    
+    # Copy SQL and Python files to the installation directory
+    sudo cp "$INSTALL_DIR/hourlyUsage.sql" "$INSTALL_DIR/"
+    sudo cp "$INSTALL_DIR/hourlyReport.py" "$INSTALL_DIR/"
+    
+    # Load config (this function was previously implemented and includes checking and updating information)
+    python3 "$INSTALL_DIR/config.py"
+    
+    # Execute SQL script
+    echo "Setting up database structures..."
+    db_container=$(python3 -c "from config import DB_CONTAINER; print(DB_CONTAINER)")
+    db_password=$(python3 -c "from config import DB_PASSWORD; print(DB_PASSWORD)")
+    db_name=$(python3 -c "from config import DB_NAME; print(DB_NAME)")
+    docker exec -i "$db_container" mariadb -u root -p"$db_password" < "$INSTALL_DIR/hourlyUsage.sql"
+    
+    # Install required Python packages
+    echo "Installing required Python packages..."
+    pip3 install subprocess
+    
+    # Start hourly report script
+    echo "Starting hourly report script..."
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    
+    echo "User usage tracking system installed and started."
+}
+
 case "$1" in
     update)
-        update
+        update $@
         ;;
     start)
         start
@@ -138,8 +194,11 @@ case "$1" in
     status)
         status
         ;;
+    install-user-usage)
+        install_user_usage
+        ;;
     *)
-        echo "Usage: marzbackup {update|start|stop|restart|status}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install-user-usage}"
         exit 1
         ;;
 esac
