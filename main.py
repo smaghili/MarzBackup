@@ -3,9 +3,9 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
-from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, get_db_name
+from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE, get_or_ask
 from handlers import register_handlers
-from backup import create_and_send_backup, get_db_container_name, get_db_password
+from backup import create_and_send_backup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,32 +19,43 @@ async def validate_config():
     config = load_config()
     changes_made = False
 
-    systems = ["marzban", "marzneshin"]
-    for system in systems:
-        try:
-            # Validate and update db_container
-            db_container = await get_db_container_name(system)
-            if config.get(f"{system}_db_container") != db_container:
-                config[f"{system}_db_container"] = db_container
-                changes_made = True
-                logging.info(f"Updated {system}_db_container to {db_container}")
+    try:
+        # Ensure API_TOKEN and ADMIN_CHAT_ID are set
+        API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
+        ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 
-            # Validate and update db_password
-            db_password = get_db_password(system)
-            if config.get(f"{system}_db_password") != db_password:
-                config[f"{system}_db_password"] = db_password
-                changes_made = True
-                logging.info(f"Updated {system}_db_password")
+        # Validate and update db_container
+        if config.get("db_container") != DB_CONTAINER:
+            config["db_container"] = DB_CONTAINER
+            changes_made = True
+            logging.info(f"Updated db_container to {DB_CONTAINER}")
 
-            # Validate and update db_name
-            db_name = get_db_name(system)
-            if config.get(f"{system}_db_name") != db_name:
-                config[f"{system}_db_name"] = db_name
-                changes_made = True
-                logging.info(f"Updated {system}_db_name to {db_name}")
+        # Validate and update db_password
+        if config.get("db_password") != DB_PASSWORD:
+            config["db_password"] = DB_PASSWORD
+            changes_made = True
+            logging.info("Updated db_password")
 
-        except Exception as e:
-            logging.error(f"Error validating {system} config: {str(e)}")
+        # Validate and update db_name
+        if config.get("db_name") != DB_NAME:
+            config["db_name"] = DB_NAME
+            changes_made = True
+            logging.info(f"Updated db_name to {DB_NAME}")
+
+        # Validate and update db_type
+        if config.get("db_type") != DB_TYPE:
+            config["db_type"] = DB_TYPE
+            changes_made = True
+            logging.info(f"Updated db_type to {DB_TYPE}")
+
+        # Ensure report_interval exists in config
+        if "report_interval" not in config:
+            config["report_interval"] = 60  # Default to 60 minutes
+            changes_made = True
+            logging.info("Added default report_interval of 60 minutes")
+
+    except Exception as e:
+        logging.error(f"Error validating config: {str(e)}")
 
     if changes_made:
         save_config(config)
@@ -52,35 +63,9 @@ async def validate_config():
     else:
         logging.info("Config file is up to date")
 
-async def scheduled_backup():
-    last_backup_time = 0
-    last_interval_change_time = 0
-    while True:
-        config = load_config()
-        interval = config.get("backup_interval_minutes", 0)
-        interval_change_time = config.get("interval_change_time", 0)
-        current_time = asyncio.get_event_loop().time()
-        
-        if interval > 0:
-            if interval_change_time > last_interval_change_time:
-                # Interval has changed, reset the timer
-                last_backup_time = interval_change_time
-                last_interval_change_time = interval_change_time
-            
-            time_since_last_backup = current_time - last_backup_time
-            if time_since_last_backup >= interval * 60:
-                success = await create_and_send_backup(bot)
-                if success:
-                    last_backup_time = current_time
-            else:
-                wait_time = (interval * 60) - time_since_last_backup
-                await asyncio.sleep(min(wait_time, 60))
-        else:
-            await asyncio.sleep(60)  # Check every minute if interval is not set
-
 async def on_startup(bot: Bot):
     await validate_config()
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="ربات MarzBackup راه‌اندازی شد و تنظیمات بررسی شدند.")
+    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been successfully started!")
 
 async def main():
     # Register all handlers
@@ -88,9 +73,6 @@ async def main():
 
     # Set up startup hook
     dp.startup.register(on_startup)
-
-    # Start scheduled backup task
-    asyncio.create_task(scheduled_backup())
 
     # Start polling
     await dp.start_polling(bot)
