@@ -62,8 +62,9 @@ def get_db_info(system):
     db_container = ""
     db_password = ""
     db_name = ""
+    db_type = ""
 
-    # Get container name from docker-compose.yml
+    # Get container name and database type from docker-compose.yml
     try:
         with open(compose_file, 'r') as f:
             compose_config = yaml.safe_load(f)
@@ -71,6 +72,11 @@ def get_db_info(system):
         for service_name, service_config in services.items():
             if 'mariadb' in service_name.lower() or ('image' in service_config and 'mariadb' in service_config['image'].lower()):
                 db_container = f"{os.path.basename(os.path.dirname(compose_file))}-{service_name}-1"
+                db_type = "mariadb"
+                break
+            elif 'mysql' in service_name.lower() or ('image' in service_config and 'mysql' in service_config['image'].lower()):
+                db_container = f"{os.path.basename(os.path.dirname(compose_file))}-{service_name}-1"
+                db_type = "mysql"
                 break
     except Exception as e:
         print(f"Error reading docker-compose.yml: {e}")
@@ -79,10 +85,8 @@ def get_db_info(system):
     try:
         with open(env_file, 'r') as f:
             for line in f:
-                # Check for various possible password environment variables
                 if line.startswith(('MARIADB_ROOT_PASSWORD=', 'MYSQL_ROOT_PASSWORD=', 'DB_PASSWORD=')):
                     db_password = line.split('=', 1)[1].strip()
-                # Check for various possible database name environment variables
                 elif line.startswith(('MARIADB_DATABASE=', 'MYSQL_DATABASE=', 'DB_NAME=')):
                     db_name = line.split('=', 1)[1].strip()
     except Exception as e:
@@ -109,7 +113,7 @@ def get_db_info(system):
         except Exception as e:
             print(f"Error reading password from docker-compose.yml: {e}")
 
-    return db_container, db_password, db_name
+    return db_container, db_password, db_name, db_type
 
 def update_config():
     config = load_config()
@@ -124,7 +128,7 @@ def update_config():
         print("Neither Marzban nor Marzneshin installation found.")
         return
 
-    db_container, db_password, db_name = get_db_info(system)
+    db_container, db_password, db_name, db_type = get_db_info(system)
 
     # Update db_container
     if config.get("db_container") != db_container:
@@ -139,6 +143,11 @@ def update_config():
     # Update db_name
     if config.get("db_name") != db_name:
         config["db_name"] = db_name
+        updated = True
+
+    # Update db_type
+    if config.get("db_type") != db_type:
+        config["db_type"] = db_type
         updated = True
 
     # Remove old system-specific keys
@@ -177,6 +186,7 @@ config = load_config()
 DB_CONTAINER = config.get('db_container', '')
 DB_PASSWORD = config.get('db_password', '')
 DB_NAME = get_db_name()
+DB_TYPE = config.get('db_type', '')
 
 # Add this line at the end of the file
 INSTALLED_VERSION = get_installed_version()
