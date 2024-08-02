@@ -1,7 +1,6 @@
 import os
 import asyncio
 import subprocess
-import yaml
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -160,6 +159,8 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
+    finally:
+        await state.clear()
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
