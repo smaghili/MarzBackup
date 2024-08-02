@@ -10,7 +10,7 @@ PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
-SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"  # اضافه کردن مسیر فایل SQL
+SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -233,9 +233,6 @@ install_user_usage() {
         sudo apt-get update && sudo apt-get install -y jq
     fi
     
-    # Load config andادامه اسکریپت برای اطمینان از اجرای فایل SQL و نصب سیستم پیگیری مصرف کاربران:
-
-```bash
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
     
