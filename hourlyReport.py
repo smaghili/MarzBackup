@@ -1,35 +1,30 @@
 import subprocess
 import time
-import json
-import os
 from datetime import datetime, timedelta
+import json
 
-INSTALL_DIR = "/opt/MarzBackup"
-SQL_FILE = os.path.join(INSTALL_DIR, 'hourlyUsage.sql')
-
-# Load configuration from config.json
 def load_config():
-    with open('/opt/marzbackup/config.json', 'r') as config_file:
-        return json.load(config_file)
+    try:
+        with open('/opt/marzbackup/config.json', 'r') as config_file:
+            return json.load(config_file)
+    except FileNotFoundError:
+        print("Config file not found. Using default values.")
+        return {}
+    except json.JSONDecodeError:
+        print("Error decoding config file. Using default values.")
+        return {}
 
 config = load_config()
 
-# Extract database information from config
-DB_CONTAINER = config.get('db_container', 'marzban-db-1')
-DB_PASSWORD = config.get('db_password', '12341234')
-DB_TYPE = config.get('db_type', 'mariadb')
+# Get backup interval from config, default to 60 minutes if not set
+BACKUP_INTERVAL = config.get('backup_interval', 60)
+if not isinstance(BACKUP_INTERVAL, int) or BACKUP_INTERVAL <= 0:
+    BACKUP_INTERVAL = 60  # Default to 60 minutes if invalid value
 
-# Get report interval from config, default to 60 minutes (1 hour) if not set
-REPORT_INTERVAL = config.get('report_interval')
-if REPORT_INTERVAL is None or not isinstance(REPORT_INTERVAL, int) or REPORT_INTERVAL <= 0:
-    REPORT_INTERVAL = 60  # Default to 60 minutes (1 hour)
+print(f"Backup interval set to {BACKUP_INTERVAL} minutes")
 
-print(f"Report interval set to {REPORT_INTERVAL} minutes")
-
-def execute_sql(sql_command, db_name=None):
-    if db_name is None:
-        db_name = 'user_usage_tracking'
-    full_command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} {db_name} -e '{sql_command}'"
+def execute_sql(sql_command):
+    full_command = f"docker exec -i marzban-db-1 mariadb -u root -p12341234 user_usage_tracking -e '{sql_command}'"
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -37,32 +32,6 @@ def execute_sql(sql_command, db_name=None):
         print(f"An error occurred: {e}")
         print(f"Error output: {e.stderr}")
         return None
-
-def setup_database():
-    print("Setting up the database...")
-    
-    if not os.path.exists(SQL_FILE):
-        print(f"SQL file not found: {SQL_FILE}")
-        return False
-    
-    with open(SQL_FILE, 'r') as file:
-        sql_content = file.read()
-    
-    # Create the database if it doesn't exist
-    create_db_command = "CREATE DATABASE IF NOT EXISTS user_usage_tracking;"
-    result = execute_sql(create_db_command, 'mysql')
-    if result is None:
-        print("Failed to create database.")
-        return False
-    
-    # Execute the SQL file content
-    result = execute_sql(sql_content)
-    if result is None:
-        print("Failed to execute SQL file content.")
-        return False
-    
-    print("Database setup completed successfully.")
-    return True
 
 def insert_usage_data():
     sql = "CALL insert_current_usage();"
@@ -76,9 +45,9 @@ def calculate_and_display_hourly_usage():
     sql = "CALL calculate_hourly_usage();"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Usage in the last {REPORT_INTERVAL} minutes:\n{result}")
+        print(f"Usage in the last hour:\n{result}")
     else:
-        print(f"Failed to calculate usage for the last {REPORT_INTERVAL} minutes")
+        print("Failed to calculate hourly usage")
 
 def cleanup_old_data():
     sql = "CALL cleanup_old_data();"
@@ -113,12 +82,6 @@ def get_historical_hourly_usage(start_time, end_time):
 
 def main():
     print("Starting usage tracking system...")
-    
-    # Set up the database before starting the main loop
-    if not setup_database():
-        print("Failed to set up the database. Exiting.")
-        return
-    
     last_insert = datetime.min
     last_cleanup_check = datetime.min
     
@@ -126,8 +89,8 @@ def main():
         while True:
             now = datetime.now()
             
-            # Insert usage data and calculate usage every REPORT_INTERVAL minutes
-            if now - last_insert >= timedelta(minutes=REPORT_INTERVAL):
+            # Insert usage data and calculate hourly usage every BACKUP_INTERVAL minutes
+            if now - last_insert >= timedelta(minutes=BACKUP_INTERVAL):
                 insert_usage_data()
                 calculate_and_display_hourly_usage()
                 last_insert = now
