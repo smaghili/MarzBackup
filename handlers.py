@@ -152,8 +152,12 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         config['report_interval'] = interval
         save_config(config)
         
+        # Restart hourlyReport.py
+        subprocess.run(["marzbackup", "stop", "user-usage"])
+        subprocess.run(["marzbackup", "install", "user-usage"])
+        
         await state.clear()
-        await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت.")
+        await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
 

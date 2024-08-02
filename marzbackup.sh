@@ -109,10 +109,7 @@ start() {
                 
                 # Start user usage tracking if it's installed
                 if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
-                    echo "Starting user usage tracking system..."
-                    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
-                    echo $! > "$USAGE_PID_FILE"
-                    echo "User usage tracking system started."
+                    start_user_usage
                 fi
             else
                 echo "Failed to start the bot. Check logs for details."
@@ -139,13 +136,7 @@ stop() {
         echo "MarzBackup is not running or PID file not found."
     fi
 
-    # Stop user usage tracking if it's running
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        kill $PID
-        rm "$USAGE_PID_FILE"
-        echo "User usage tracking system stopped."
-    fi
+    stop_user_usage
 }
 
 restart() {
@@ -189,6 +180,36 @@ status() {
     else
         echo "User usage tracking system is not running."
     fi
+}
+
+start_user_usage() {
+    echo "Starting user usage tracking system..."
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    echo $! > "$USAGE_PID_FILE"
+    echo "User usage tracking system started."
+}
+
+stop_user_usage() {
+    echo "Stopping user usage tracking system..."
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            kill $PID
+            rm "$USAGE_PID_FILE"
+            echo "User usage tracking system stopped."
+        else
+            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
+            rm "$USAGE_PID_FILE"
+        fi
+    else
+        echo "User usage tracking system is not running."
+    fi
+}
+
+restart_user_usage() {
+    stop_user_usage
+    sleep 2
+    start_user_usage
 }
 
 install_user_usage() {
@@ -246,35 +267,10 @@ install_user_usage() {
         exit 1
     fi
     
-    # Start hourly report script
-    echo "Starting hourly report script..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
-    echo $! > "$USAGE_PID_FILE"
-    
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
-    echo "User usage tracking system installed and started."
-}
-
-stop_user_usage() {
-    echo "Stopping user usage tracking system..."
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            kill $PID
-            rm "$USAGE_PID_FILE"
-            echo "User usage tracking system stopped."
-        else
-            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
-            rm "$USAGE_PID_FILE"
-        fi
-    else
-        echo "User usage tracking system is not running."
-    fi
-
-    # Remove the flag from the config file
-    jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+    start_user_usage
 }
 
 case "$1" in
@@ -285,10 +281,18 @@ case "$1" in
         start
         ;;
     stop)
-        stop
+        if [ "$2" == "user-usage" ]; then
+            stop_user_usage
+        else
+            stop
+        fi
         ;;
     restart)
-        restart
+        if [ "$2" == "user-usage" ]; then
+            restart_user_usage
+        else
+            restart
+        fi
         ;;
     status)
         status
@@ -302,15 +306,8 @@ case "$1" in
             exit 1
         fi
         ;;
-    stop)
-        if [ "$2" == "user-usage" ]; then
-            stop_user_usage
-        else
-            stop
-        fi
-        ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install user-usage|stop user-usage}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage}"
         exit 1
         ;;
 esac
