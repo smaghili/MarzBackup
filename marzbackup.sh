@@ -216,15 +216,10 @@ restart_user_usage() {
 install_user_usage() {
     echo "Installing user usage tracking system..."
     
+    # Force removal of USAGE_PID_FILE if it exists
     if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            echo "User usage tracking system is already running."
-            return
-        else
-            echo "Stale PID file found. Removing it."
-            rm "$USAGE_PID_FILE"
-        fi
+        echo "Removing existing PID file..."
+        rm "$USAGE_PID_FILE"
     fi
     
     # Check if jq is installed
@@ -262,10 +257,14 @@ install_user_usage() {
     # Execute SQL script to create the database and required tables and procedures
     if [ -f "$SQL_FILE" ]; then
         echo "Setting up database structures using $db_type..."
+        # Print the command with actual values (for debugging purposes)
+        echo "Executing: docker exec -i $db_container $db_type -u root -p<password> < $SQL_FILE"
         docker exec -i "$db_container" "$db_type" -u root -p"$db_password" < "$SQL_FILE"
         if [ $? -ne 0 ]; then
             echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
             exit 1
+        else
+            echo "SQL script executed successfully."
         fi
     else
         echo "Error: SQL file not found at $SQL_FILE"
@@ -275,7 +274,10 @@ install_user_usage() {
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
+    echo "Starting user usage tracking system..."
     start_user_usage
+    
+    echo "User usage tracking system installation completed."
 }
 
 case "$1" in
