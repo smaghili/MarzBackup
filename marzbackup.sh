@@ -6,6 +6,7 @@ TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
+USER_USAGE_LOG_FILE="/var/log/marzbackup_user_usage.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -173,20 +174,30 @@ status() {
         PID=$(cat "$USAGE_PID_FILE")
         if ps -p $PID > /dev/null; then
             echo "User usage tracking system is running. PID: $PID"
+            echo "Last 10 lines of user usage log:"
+            tail -n 10 "$USER_USAGE_LOG_FILE"
         else
             echo "User usage tracking system is not running, but PID file exists. It may have crashed."
+            echo "Last 20 lines of user usage log:"
+            tail -n 20 "$USER_USAGE_LOG_FILE"
             rm "$USAGE_PID_FILE"
         fi
     else
         echo "User usage tracking system is not running."
+        if [ -f "$USER_USAGE_LOG_FILE" ]; then
+            echo "Last 20 lines of user usage log:"
+            tail -n 20 "$USER_USAGE_LOG_FILE"
+        else
+            echo "No user usage log file found."
+        fi
     fi
 }
 
 start_user_usage() {
     echo "Starting user usage tracking system..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$USER_USAGE_LOG_FILE" 2>&1 &
     echo $! > "$USAGE_PID_FILE"
-    echo "User usage tracking system started."
+    echo "User usage tracking system started. Logs are being written to $USER_USAGE_LOG_FILE"
 }
 
 stop_user_usage() {
@@ -244,11 +255,10 @@ install_user_usage() {
     config=$(cat "$CONFIG_FILE")
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
-    db_name=$(echo $config | jq -r '.db_name')
     db_type=$(echo $config | jq -r '.db_type')
 
     # Validate database information
-    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ] || [ -z "$db_type" ]; then
+    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_type" ]; then
         echo "Error: Missing database configuration. Please check your config.json file."
         exit 1
     fi
@@ -261,9 +271,10 @@ install_user_usage() {
 
     # Execute SQL script
     echo "Setting up database structures using $db_type..."
-    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' $db_name" < "$INSTALL_DIR/hourlyUsage.sql"
+    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password'" < "$INSTALL_DIR/hourlyUsage.sql" 2>> "$USER_USAGE_LOG_FILE"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
+        echo "Check $USER_USAGE_LOG_FILE for more details."
         exit 1
     fi
     
