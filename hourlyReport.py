@@ -3,13 +3,13 @@ import time
 import json
 import os
 from datetime import datetime, timedelta
+from config import load_config, CONFIG_FILE_PATH
 
 INSTALL_DIR = "/opt/MarzBackup"
-CONFIG_FILE = '/opt/marzbackup/config.json'
 SQL_FILE = os.path.join(INSTALL_DIR, 'hourlyUsage.sql')
 
 def load_config():
-    with open(CONFIG_FILE, 'r') as file:
+    with open(CONFIG_FILE_PATH, 'r') as file:
         return json.load(file)
 
 config = load_config()
@@ -22,7 +22,7 @@ if not all([DB_CONTAINER, DB_PASSWORD, DB_NAME]):
     raise ValueError("Missing database configuration in config file")
 
 def execute_sql(sql_command):
-    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} {DB_NAME} -e '{sql_command}'"
+    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} user_usage_tracking -e '{sql_command}'"
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -99,7 +99,7 @@ def get_historical_hourly_usage(start_time, end_time):
 
 def main():
     print("Starting usage tracking system...")
-    print(f"Using database: {DB_NAME} on container: {DB_CONTAINER}")
+    print(f"Using database: user_usage_tracking on container: {DB_CONTAINER}")
     
     # Set up the database before starting the main loop
     setup_database()
@@ -111,8 +111,12 @@ def main():
         while True:
             now = datetime.now()
             
-            # Insert usage data and calculate hourly usage every hour
-            if now - last_insert >= timedelta(hours=1):
+            # Reload config to get the latest report_interval
+            config = load_config()
+            report_interval = config.get('report_interval', 60)  # Default to 60 minutes if not set
+            
+            # Insert usage data and calculate hourly usage every interval
+            if now - last_insert >= timedelta(minutes=report_interval):
                 insert_usage_data()
                 calculate_and_display_hourly_usage()
                 last_insert = now
@@ -123,7 +127,7 @@ def main():
                     cleanup_old_data()
                 last_cleanup_check = now
             
-            time.sleep(300)  # Check every 5 minutes
+            time.sleep(60)  # Check every minute
     except KeyboardInterrupt:
         print("Usage tracking system stopped.")
     except Exception as e:
