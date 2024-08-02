@@ -21,8 +21,9 @@ DB_NAME = config.get('db_name')
 if not all([DB_CONTAINER, DB_PASSWORD, DB_NAME]):
     raise ValueError("Missing database configuration in config file")
 
-def execute_sql(sql_command):
-    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} user_usage_tracking -e '{sql_command}'"
+def execute_sql(sql_command, db_name='user_usage_tracking'):
+    escaped_command = sql_command.replace("'", "'\\''")
+    full_command = f"docker exec -i {DB_CONTAINER} bash -c \"mariadb -u root -p'{DB_PASSWORD}' {db_name} -e '{escaped_command}'\""
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -39,12 +40,22 @@ def setup_database():
         sql_content = file.read()
     
     print("Setting up the database...")
+    
+    # Create the database if it doesn't exist
+    create_db_command = "CREATE DATABASE IF NOT EXISTS user_usage_tracking;"
+    result = execute_sql(create_db_command, DB_NAME)
+    if result is None:
+        print("Failed to create database.")
+        return False
+    
+    # Execute the rest of the SQL script
     result = execute_sql(sql_content)
     if result is not None:
         print("Database setup completed successfully.")
+        return True
     else:
         print("Failed to set up the database.")
-        raise RuntimeError("Database setup failed")
+        return False
 
 def insert_usage_data():
     sql = "CALL insert_current_usage();"
@@ -102,7 +113,9 @@ def main():
     print(f"Using database: user_usage_tracking on container: {DB_CONTAINER}")
     
     # Set up the database before starting the main loop
-    setup_database()
+    if not setup_database():
+        print("Failed to set up the database. Exiting.")
+        return
     
     last_insert = datetime.min
     last_cleanup_check = datetime.min
