@@ -163,16 +163,6 @@ def update_config():
         updated = True
         print(f"Updated db_type to {db_type}")
 
-    # Remove old system-specific keys
-    old_keys = [
-        "marzban_db_container", "marzban_db_password", "marzban_db_name",
-        "marzneshin_db_container", "marzneshin_db_password", "marzneshin_db_name"
-    ]
-    for old_key in old_keys:
-        if old_key in config:
-            del config[old_key]
-            updated = True
-
     if updated:
         save_config(config)
         print("Config file updated with correct values")
@@ -185,6 +175,12 @@ def get_db_name():
 
 # Load existing config
 config = load_config()
+
+# Get API_TOKEN
+API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
+
+# Get ADMIN_CHAT_ID
+ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 
 # Update the config with latest database information
 update_config()
