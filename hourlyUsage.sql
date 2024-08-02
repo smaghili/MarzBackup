@@ -40,8 +40,10 @@ BEGIN
     SELECT id, NOW(), COALESCE(used_traffic, 0)
     FROM v_users;
 END //
+DELIMITER ;
 
--- Update the calculate_usage procedure to insert periodic data
+-- Create procedure to calculate usage data
+DELIMITER //
 CREATE OR REPLACE PROCEDURE CalculateUsage()
 BEGIN
     INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp)
@@ -67,8 +69,10 @@ BEGIN
     FROM PeriodicUsage
     WHERE timestamp = (SELECT MAX(timestamp) FROM PeriodicUsage);
 END //
+DELIMITER ;
 
 -- Create procedure to clean up old data
+DELIMITER //
 CREATE OR REPLACE PROCEDURE CleanupOldData()
 BEGIN
     DELETE FROM UsageSnapshots
@@ -79,8 +83,10 @@ BEGIN
     
     INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
 END //
+DELIMITER ;
 
--- Create a new procedure to retrieve historical usage data
+-- Create procedure to retrieve historical usage data
+DELIMITER //
 CREATE OR REPLACE PROCEDURE GetHistoricalUsage(IN p_start_time DATETIME, IN p_end_time DATETIME)
 BEGIN
     SELECT user_id, username, usage_in_period, timestamp
@@ -88,9 +94,4 @@ BEGIN
     WHERE timestamp BETWEEN p_start_time AND p_end_time
     ORDER BY timestamp, user_id;
 END //
-
 DELIMITER ;
-
--- Grant necessary permissions (adjust as needed for security)
-GRANT SELECT ON marzban.users TO 'your_username'@'localhost';
-GRANT ALL PRIVILEGES ON UserUsageAnalytics.* TO 'your_username'@'localhost';
