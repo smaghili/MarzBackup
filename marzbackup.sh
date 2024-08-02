@@ -6,11 +6,11 @@ TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
-USER_USAGE_LOG_FILE="/var/log/marzbackup_user_usage.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
+SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"  # اضافه کردن مسیر فایل SQL
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -174,30 +174,20 @@ status() {
         PID=$(cat "$USAGE_PID_FILE")
         if ps -p $PID > /dev/null; then
             echo "User usage tracking system is running. PID: $PID"
-            echo "Last 10 lines of user usage log:"
-            tail -n 10 "$USER_USAGE_LOG_FILE"
         else
             echo "User usage tracking system is not running, but PID file exists. It may have crashed."
-            echo "Last 20 lines of user usage log:"
-            tail -n 20 "$USER_USAGE_LOG_FILE"
             rm "$USAGE_PID_FILE"
         fi
     else
         echo "User usage tracking system is not running."
-        if [ -f "$USER_USAGE_LOG_FILE" ]; then
-            echo "Last 20 lines of user usage log:"
-            tail -n 20 "$USER_USAGE_LOG_FILE"
-        else
-            echo "No user usage log file found."
-        fi
     fi
 }
 
 start_user_usage() {
     echo "Starting user usage tracking system..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$USER_USAGE_LOG_FILE" 2>&1 &
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
     echo $! > "$USAGE_PID_FILE"
-    echo "User usage tracking system started. Logs are being written to $USER_USAGE_LOG_FILE"
+    echo "User usage tracking system started."
 }
 
 stop_user_usage() {
@@ -243,6 +233,9 @@ install_user_usage() {
         sudo apt-get update && sudo apt-get install -y jq
     fi
     
+    # Load config andادامه اسکریپت برای اطمینان از اجرای فایل SQL و نصب سیستم پیگیری مصرف کاربران:
+
+```bash
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
     
@@ -269,15 +262,19 @@ install_user_usage() {
         exit 1
     fi
 
-    # Execute SQL script
-    echo "Setting up database structures using $db_type..."
-    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password'" < "$INSTALL_DIR/hourlyUsage.sql" 2>> "$USER_USAGE_LOG_FILE"
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
-        echo "Check $USER_USAGE_LOG_FILE for more details."
+    # Execute SQL script to create the database and required tables and procedures
+    if [ -f "$SQL_FILE" ]; then
+        echo "Setting up database structures using $db_type..."
+        docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < $SQL_FILE"
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
+            exit 1
+        fi
+    else
+        echo "Error: SQL file not found at $SQL_FILE"
         exit 1
     fi
-    
+
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
