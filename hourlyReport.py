@@ -1,7 +1,11 @@
 import subprocess
 import time
 import json
+import os
 from datetime import datetime, timedelta
+
+INSTALL_DIR = "/opt/MarzBackup"
+SQL_FILE = os.path.join(INSTALL_DIR, 'hourlyUsage.sql')
 
 # Load configuration from config.json
 def load_config():
@@ -22,8 +26,10 @@ if REPORT_INTERVAL is None or not isinstance(REPORT_INTERVAL, int) or REPORT_INT
 
 print(f"Report interval set to {REPORT_INTERVAL} minutes")
 
-def execute_sql(sql_command):
-    full_command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} user_usage_tracking -e '{sql_command}'"
+def execute_sql(sql_command, db_name=None):
+    if db_name is None:
+        db_name = 'user_usage_tracking'
+    full_command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} {db_name} -e '{sql_command}'"
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -31,6 +37,32 @@ def execute_sql(sql_command):
         print(f"An error occurred: {e}")
         print(f"Error output: {e.stderr}")
         return None
+
+def setup_database():
+    print("Setting up the database...")
+    
+    if not os.path.exists(SQL_FILE):
+        print(f"SQL file not found: {SQL_FILE}")
+        return False
+    
+    with open(SQL_FILE, 'r') as file:
+        sql_content = file.read()
+    
+    # Create the database if it doesn't exist
+    create_db_command = "CREATE DATABASE IF NOT EXISTS user_usage_tracking;"
+    result = execute_sql(create_db_command, 'mysql')
+    if result is None:
+        print("Failed to create database.")
+        return False
+    
+    # Execute the SQL file content
+    result = execute_sql(sql_content)
+    if result is None:
+        print("Failed to execute SQL file content.")
+        return False
+    
+    print("Database setup completed successfully.")
+    return True
 
 def insert_usage_data():
     sql = "CALL insert_current_usage();"
@@ -81,6 +113,12 @@ def get_historical_hourly_usage(start_time, end_time):
 
 def main():
     print("Starting usage tracking system...")
+    
+    # Set up the database before starting the main loop
+    if not setup_database():
+        print("Failed to set up the database. Exiting.")
+        return
+    
     last_insert = datetime.min
     last_cleanup_check = datetime.min
     
