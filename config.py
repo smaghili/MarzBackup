@@ -186,12 +186,6 @@ def get_db_name():
 # Load existing config
 config = load_config()
 
-# Get API_TOKEN
-API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
-
-# Get ADMIN_CHAT_ID
-ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
-
 # Update the config with latest database information
 update_config()
 
@@ -207,6 +201,5 @@ DB_TYPE = config.get('db_type', '')
 # Add this line at the end of the file
 INSTALLED_VERSION = get_installed_version()
 
-# Run update_config at the start of the program
 if __name__ == "__main__":
     update_config()

@@ -4,40 +4,26 @@ import sys
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
-from config import API_TOKEN, ADMIN_CHAT_ID, load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE, get_or_ask
+from config import load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
 from handlers import register_handlers
 from backup import create_and_send_backup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+# Load config
+config = load_config()
+API_TOKEN = config.get('API_TOKEN')
+ADMIN_CHAT_ID = config.get('ADMIN_CHAT_ID')
+
+if not API_TOKEN or not ADMIN_CHAT_ID:
+    logging.error("API_TOKEN or ADMIN_CHAT_ID is missing. Please run setup.py first.")
+    sys.exit(1)
+
 # Initialize bot and dispatcher
-bot = None
+bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
-
-async def init_bot():
-    global bot
-    global API_TOKEN
-    global ADMIN_CHAT_ID
-    
-    while True:
-        try:
-            bot = Bot(token=API_TOKEN)
-            await bot.get_me()
-            break
-        except Exception as e:
-            logging.error(f"Invalid bot token: {e}")
-            API_TOKEN = get_or_ask('API_TOKEN', "Please enter your Telegram bot token: ")
-    
-    # Validate ADMIN_CHAT_ID
-    while True:
-        try:
-            await bot.send_message(chat_id=ADMIN_CHAT_ID, text="Validating admin chat ID...")
-            break
-        except Exception as e:
-            logging.error(f"Invalid admin chat ID: {e}")
-            ADMIN_CHAT_ID = get_or_ask('ADMIN_CHAT_ID', "Please enter the admin chat ID: ")
 
 async def validate_config():
     config = load_config()
@@ -88,8 +74,6 @@ async def on_startup(bot: Bot):
     await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been successfully started!")
 
 async def main():
-    await init_bot()
-    
     # Register all handlers
     register_handlers(dp)
 
