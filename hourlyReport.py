@@ -1,87 +1,132 @@
 import subprocess
 import time
-from datetime import datetime, timedelta
 import json
+import os
+import logging
+from datetime import datetime, timedelta
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Constants
+CONFIG_FILE = '/opt/marzbackup/config.json'
+SQL_FILE = '/opt/MarzBackup/hourlyUsage.sql'
 
 def load_config():
     try:
-        with open('/opt/marzbackup/config.json', 'r') as config_file:
-            return json.load(config_file)
+        with open(CONFIG_FILE, 'r') as file:
+            config = json.load(file)
+        return config
     except FileNotFoundError:
-        print("Config file not found. Using default values.")
+        logging.error(f"Config file not found: {CONFIG_FILE}")
         return {}
     except json.JSONDecodeError:
-        print("Error decoding config file. Using default values.")
+        logging.error(f"Error decoding config file: {CONFIG_FILE}")
         return {}
 
 config = load_config()
 
-# Get backup interval from config, default to 60 minutes if not set
-BACKUP_INTERVAL = config.get('backup_interval', 60)
-if not isinstance(BACKUP_INTERVAL, int) or BACKUP_INTERVAL <= 0:
-    BACKUP_INTERVAL = 60  # Default to 60 minutes if invalid value
+# Database configuration
+DB_CONTAINER = config.get('db_container', 'marzban-db-1')
+DB_PASSWORD = config.get('db_password', '12341234')
+DB_TYPE = config.get('db_type', 'mariadb')
+MARZBAN_DB = config.get('marzban_db', 'marzban')
+USER_TRACKING_DB = 'user_usage_tracking'
 
-print(f"Backup interval set to {BACKUP_INTERVAL} minutes")
+# Get report interval from config, default to 60 minutes if not set
+REPORT_INTERVAL = config.get('report_interval', 60)
+if not isinstance(REPORT_INTERVAL, int) or REPORT_INTERVAL <= 0:
+    REPORT_INTERVAL = 60
 
-def execute_sql(sql_command):
-    full_command = f"docker exec -i marzban-db-1 mariadb -u root -p12341234 user_usage_tracking -e '{sql_command}'"
+logging.info(f"Report interval set to {REPORT_INTERVAL} minutes")
+
+def execute_sql(sql_command, db_name=None):
+    if db_name is None:
+        db_name = USER_TRACKING_DB
+    
     try:
-        result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
-        return result.stdout
+        escaped_sql = sql_command.replace("'", "'\\''").replace('"', '\\"')
+        command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} {db_name} -e \"{escaped_sql}\""
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e}")
-        print(f"Error output: {e.stderr}")
+        logging.error(f"SQL execution error: {e}")
+        logging.error(f"Error output: {e.stderr}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error in execute_sql: {e}")
         return None
 
+def setup_database():
+    logging.info("Setting up the user tracking database...")
+    
+    # Create the user tracking database if it doesn't exist
+    create_db_command = f"CREATE DATABASE IF NOT EXISTS {USER_TRACKING_DB};"
+    result = execute_sql(create_db_command, 'mysql')
+    if result is None:
+        logging.error("Failed to create user tracking database.")
+        return False
+    
+    # Read and execute SQL file content for user tracking database
+    if not os.path.exists(SQL_FILE):
+        logging.error(f"SQL file not found: {SQL_FILE}")
+        return False
+    
+    with open(SQL_FILE, 'r') as file:
+        sql_content = file.read()
+    
+    # Split SQL content into individual statements
+    statements = sql_content.split(';')
+    
+    for statement in statements:
+        statement = statement.strip()
+        if statement:
+            result = execute_sql(statement, USER_TRACKING_DB)
+            if result is None:
+                logging.error(f"Failed to execute SQL statement: {statement[:50]}...")
+                return False
+    
+    logging.info("User tracking database setup completed successfully.")
+    return True
+
+def get_user_data():
+    query = f"SELECT id, username, used_traffic FROM {MARZBAN_DB}.users;"
+    return execute_sql(query, MARZBAN_DB)
+
 def insert_usage_data():
-    sql = "CALL insert_current_usage();"
-    result = execute_sql(sql)
-    if result is not None:
-        print(f"Inserted usage snapshot at {datetime.now()}")
-    else:
-        print("Failed to insert usage snapshot")
+    user_data = get_user_data()
+    if user_data is None:
+        logging.error("Failed to retrieve user data from Marzban database.")
+        return
+
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for line in user_data.split('\n')[1:]:  # Skip header row
+        user_id, username, used_traffic = line.split('\t')
+        sql = f"INSERT INTO user_usage_snapshots (user_id, timestamp, total_usage) VALUES ({user_id}, '{current_time}', {used_traffic});"
+        result = execute_sql(sql)
+        if result is None:
+            logging.error(f"Failed to insert usage data for user {username}")
+    
+    logging.info(f"Inserted usage snapshot at {current_time}")
 
 def calculate_and_display_hourly_usage():
-    sql = "CALL calculate_hourly_usage();"
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    sql = f"CALL calculate_hourly_usage('{current_time}');"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Usage in the last hour:\n{result}")
+        logging.info(f"Usage calculated at {current_time}:\n{result}")
     else:
-        print("Failed to calculate hourly usage")
+        logging.error("Failed to calculate hourly usage")
 
-def cleanup_old_data():
-    sql = "CALL cleanup_old_data();"
-    result = execute_sql(sql)
-    if result is not None:
-        print(f"Cleaned up old data at {datetime.now()}")
-    else:
-        print("Failed to clean up old data")
-
-def should_run_cleanup():
-    sql = "SELECT MAX(cleanup_time) FROM cleanup_log;"
-    result = execute_sql(sql)
-    if result is not None:
-        result = result.strip().split('\n')[-1]  # Get the last line
-        if result.lower() == 'null' or result == '':
-            return True  # If no cleanup has been done, we should run it
-        try:
-            last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-            return datetime.now() - last_cleanup > timedelta(days=60)
-        except ValueError:
-            print(f"Unexpected date format: {result}")
-            return False
-    return False
-
-def get_historical_hourly_usage(start_time, end_time):
-    sql = f"CALL get_historical_hourly_usage('{start_time}', '{end_time}');"
-    result = execute_sql(sql)
-    if result is not None:
-        print(f"Historical hourly usage between {start_time} and {end_time}:\n{result}")
-    else:
-        print("Failed to get historical hourly usage")
+# ... (rest of the functions remain the same)
 
 def main():
-    print("Starting usage tracking system...")
+    logging.info("Starting usage tracking system...")
+    
+    if not setup_database():
+        logging.error("Failed to set up the database. Exiting.")
+        return
+    
     last_insert = datetime.min
     last_cleanup_check = datetime.min
     
@@ -89,13 +134,11 @@ def main():
         while True:
             now = datetime.now()
             
-            # Insert usage data and calculate hourly usage every BACKUP_INTERVAL minutes
-            if now - last_insert >= timedelta(minutes=BACKUP_INTERVAL):
+            if now - last_insert >= timedelta(minutes=REPORT_INTERVAL):
                 insert_usage_data()
                 calculate_and_display_hourly_usage()
                 last_insert = now
             
-            # Check for cleanup daily
             if now - last_cleanup_check >= timedelta(days=1):
                 if should_run_cleanup():
                     cleanup_old_data()
@@ -103,13 +146,9 @@ def main():
             
             time.sleep(60)  # Check every minute
     except KeyboardInterrupt:
-        print("Usage tracking system stopped.")
+        logging.info("Usage tracking system stopped.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        raise
+        logging.error(f"An unexpected error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
-
-# Uncomment and modify these lines to test specific functionalities
-# get_historical_hourly_usage(datetime.now() - timedelta(days=7), datetime.now())
