@@ -37,7 +37,7 @@ def insert_usage_data():
         print("Failed to insert usage snapshot")
 
 def calculate_and_display_hourly_usage():
-    sql = "CALL calculate_hourly_usage();"
+    sql = "CALL calculate_usage();"
     result = execute_sql(sql)
     if result is not None:
         print(f"Usage in the last hour:\n{result}")
@@ -46,9 +46,9 @@ def calculate_and_display_hourly_usage():
 
 def cleanup_old_data():
     sql = """
-    DELETE FROM user_usage_snapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    DELETE FROM user_hourly_usage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    INSERT INTO cleanup_log (cleanup_time) VALUES (NOW());
+    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
     """
     result = execute_sql(sql)
     if result is not None:
@@ -57,7 +57,7 @@ def cleanup_old_data():
         print("Failed to clean up old data")
 
 def should_run_cleanup():
-    sql = "SELECT MAX(cleanup_time) FROM cleanup_log;"
+    sql = "SELECT MAX(cleanup_time) FROM CleanupLog;"
     result = execute_sql(sql)
     if result is not None:
         result = result.strip().split('\n')[-1]  # Get the last line
@@ -72,7 +72,7 @@ def should_run_cleanup():
     return False
 
 def get_historical_hourly_usage(start_time, end_time):
-    sql = f"CALL get_historical_hourly_usage('{start_time}', '{end_time}');"
+    sql = f"CALL get_historical_usage('{start_time}', '{end_time}');"
     result = execute_sql(sql)
     if result is not None:
         print(f"Historical hourly usage between {start_time} and {end_time}:\n{result}")
