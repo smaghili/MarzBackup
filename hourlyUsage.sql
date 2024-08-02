@@ -1,5 +1,6 @@
 -- Create the database if it doesn't exist
 CREATE DATABASE IF NOT EXISTS user_usage_tracking;
+
 USE user_usage_tracking;
 
 -- Create table for storing usage snapshots
@@ -28,14 +29,10 @@ CREATE TABLE IF NOT EXISTS user_hourly_usage (
 );
 
 -- Create procedure to insert current usage for all users
-DELIMITER //
 CREATE OR REPLACE PROCEDURE insert_current_usage()
 BEGIN
-    -- This procedure is now called from Python code with pre-fetched data
-    -- The actual insertion is handled in the Python script
-    -- This procedure is kept for compatibility and possible future use
     SELECT 'Insertion is handled in Python code' AS message;
-END //
+END;
 
 -- Update the calculate_hourly_usage procedure to insert hourly data
 CREATE OR REPLACE PROCEDURE calculate_hourly_usage()
@@ -64,7 +61,7 @@ BEGIN
     SELECT user_id, username, usage_in_last_hour
     FROM user_hourly_usage
     WHERE timestamp = (SELECT MAX(timestamp) FROM user_hourly_usage);
-END //
+END;
 
 -- Create procedure to clean up old data
 CREATE OR REPLACE PROCEDURE cleanup_old_data()
@@ -76,7 +73,7 @@ BEGIN
     WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
     
     INSERT INTO cleanup_log (cleanup_time) VALUES (NOW());
-END //
+END;
 
 -- Create a procedure to retrieve historical hourly usage data
 CREATE OR REPLACE PROCEDURE get_historical_hourly_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
@@ -85,6 +82,4 @@ BEGIN
     FROM user_hourly_usage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
     ORDER BY timestamp, user_id;
-END //
-
-DELIMITER ;
+END;
