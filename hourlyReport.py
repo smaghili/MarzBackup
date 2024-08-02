@@ -4,38 +4,22 @@ import json
 import os
 from datetime import datetime, timedelta
 
-# Constants
-CONFIG_FILE = '/opt/marzbackup/config.json'
-SQL_FILE = '/opt/MarzBackup/hourlyUsage.sql'
+CONFIG_FILE_PATH = "/opt/marzbackup/config.json"
 
 def load_config():
-    try:
-        with open(CONFIG_FILE, 'r') as config_file:
-            return json.load(config_file)
-    except FileNotFoundError:
-        print(f"Config file not found: {CONFIG_FILE}")
-        return {}
-    except json.JSONDecodeError:
-        print(f"Error decoding config file: {CONFIG_FILE}")
-        return {}
+    with open(CONFIG_FILE_PATH, 'r') as file:
+        return json.load(file)
 
 config = load_config()
 
-# Database configuration
-DB_CONTAINER = config.get('db_container', 'marzban-db-1')
-DB_PASSWORD = config.get('db_password', '12341234')
-DB_TYPE = config.get('db_type', 'mariadb')
-USAGE_DB = 'UserUsageAnalytics'
+DB_CONTAINER = config.get('db_container')
+DB_PASSWORD = config.get('db_password')
 
-# Get report interval from config, default to 60 minutes if not set
-REPORT_INTERVAL = config.get('report_interval', 60)
-if not isinstance(REPORT_INTERVAL, int) or REPORT_INTERVAL <= 0:
-    REPORT_INTERVAL = 60
-
-print(f"Report interval set to {REPORT_INTERVAL} minutes")
+if not all([DB_CONTAINER, DB_PASSWORD]):
+    raise ValueError("Missing database configuration in config file")
 
 def execute_sql(sql_command):
-    full_command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} {USAGE_DB} -e '{sql_command}'"
+    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} UserUsageAnalytics -e '{sql_command}'"
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -44,47 +28,36 @@ def execute_sql(sql_command):
         print(f"Error output: {e.stderr}")
         return None
 
-def setup_database():
-    print("Setting up the database...")
-    if not os.path.exists(SQL_FILE):
-        print(f"SQL file not found: {SQL_FILE}")
-        return False
-    
-    full_command = f"docker exec -i {DB_CONTAINER} {DB_TYPE} -u root -p{DB_PASSWORD} < {SQL_FILE}"
-    try:
-        subprocess.run(full_command, shell=True, check=True)
-        print("Database setup completed successfully.")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to execute SQL file. Error: {e}")
-        return False
-
 def insert_usage_data():
-    sql = "CALL InsertCurrentUsage();"
+    sql = "CALL insert_current_usage();"
     result = execute_sql(sql)
     if result is not None:
         print(f"Inserted usage snapshot at {datetime.now()}")
     else:
         print("Failed to insert usage snapshot")
 
-def calculate_and_display_usage():
-    sql = "CALL CalculateUsage();"
+def calculate_and_display_hourly_usage():
+    sql = "CALL calculate_hourly_usage();"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Usage in the last {REPORT_INTERVAL} minutes:\n{result}")
+        print(f"Usage in the last hour:\n{result}")
     else:
-        print(f"Failed to calculate usage for the last {REPORT_INTERVAL} minutes")
+        print("Failed to calculate hourly usage")
 
 def cleanup_old_data():
-    sql = "CALL CleanupOldData();"
+    sql = """
+    DELETE FROM user_usage_snapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM user_hourly_usage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    INSERT INTO cleanup_log (cleanup_time) VALUES (NOW());
+    """
     result = execute_sql(sql)
     if result is not None:
-        print(f"Cleaned up old data at {datetime.now()}")
+        print(f"Cleaned up data older than one year at {datetime.now()}")
     else:
         print("Failed to clean up old data")
 
 def should_run_cleanup():
-    sql = "SELECT MAX(cleanup_time) FROM CleanupLog;"
+    sql = "SELECT MAX(cleanup_time) FROM cleanup_log;"
     result = execute_sql(sql)
     if result is not None:
         result = result.strip().split('\n')[-1]  # Get the last line
@@ -92,26 +65,23 @@ def should_run_cleanup():
             return True  # If no cleanup has been done, we should run it
         try:
             last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-            return datetime.now() - last_cleanup > timedelta(days=60)
+            return datetime.now() - last_cleanup > timedelta(days=365)  # Run cleanup annually
         except ValueError:
             print(f"Unexpected date format: {result}")
             return False
     return False
 
-def get_historical_usage(start_time, end_time):
-    sql = f"CALL GetHistoricalUsage('{start_time}', '{end_time}');"
+def get_historical_hourly_usage(start_time, end_time):
+    sql = f"CALL get_historical_hourly_usage('{start_time}', '{end_time}');"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Historical usage between {start_time} and {end_time}:\n{result}")
+        print(f"Historical hourly usage between {start_time} and {end_time}:\n{result}")
     else:
-        print("Failed to get historical usage")
+        print("Failed to get historical hourly usage")
 
 def main():
     print("Starting usage tracking system...")
-    
-    if not setup_database():
-        print("Failed to set up the database. Exiting.")
-        return
+    print(f"Using database on container: {DB_CONTAINER}")
     
     last_insert = datetime.min
     last_cleanup_check = datetime.min
@@ -120,10 +90,14 @@ def main():
         while True:
             now = datetime.now()
             
-            # Insert usage data and calculate usage every REPORT_INTERVAL minutes
-            if now - last_insert >= timedelta(minutes=REPORT_INTERVAL):
+            # Reload config to get the latest report_interval
+            config = load_config()
+            report_interval = config.get('report_interval', 60)  # Default to 60 minutes if not set
+            
+            # Insert usage data and calculate hourly usage every interval
+            if now - last_insert >= timedelta(minutes=report_interval):
                 insert_usage_data()
-                calculate_and_display_usage()
+                calculate_and_display_hourly_usage()
                 last_insert = now
             
             # Check for cleanup daily
