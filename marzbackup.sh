@@ -262,7 +262,7 @@ install_user_usage() {
     # Execute SQL script to create the database and required tables and procedures
     if [ -f "$SQL_FILE" ]; then
         echo "Setting up database structures using $db_type..."
-        docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < $SQL_FILE"
+        docker exec -i "$db_container" "$db_type" -u root -p"$db_password" < "$SQL_FILE"
         if [ $? -ne 0 ]; then
             echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
             exit 1
