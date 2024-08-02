@@ -60,14 +60,6 @@ def execute_sql(sql_command, db_name=None):
 def setup_database():
     logging.info("Setting up the user tracking database...")
     
-    # Create the user tracking database if it doesn't exist
-    create_db_command = f"CREATE DATABASE IF NOT EXISTS {USER_TRACKING_DB};"
-    result = execute_sql(create_db_command, 'mysql')
-    if result is None:
-        logging.error("Failed to create user tracking database.")
-        return False
-    
-    # Read and execute SQL file content for user tracking database
     if not os.path.exists(SQL_FILE):
         logging.error(f"SQL file not found: {SQL_FILE}")
         return False
@@ -81,7 +73,7 @@ def setup_database():
     for statement in statements:
         statement = statement.strip()
         if statement:
-            result = execute_sql(statement, USER_TRACKING_DB)
+            result = execute_sql(statement)
             if result is None:
                 logging.error(f"Failed to execute SQL statement: {statement[:50]}...")
                 return False
@@ -110,15 +102,31 @@ def insert_usage_data():
     logging.info(f"Inserted usage snapshot at {current_time}")
 
 def calculate_and_display_hourly_usage():
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    sql = f"CALL calculate_hourly_usage('{current_time}');"
+    sql = "CALL calculate_hourly_usage();"
     result = execute_sql(sql)
     if result is not None:
-        logging.info(f"Usage calculated at {current_time}:\n{result}")
+        logging.info(f"Usage calculated:\n{result}")
     else:
         logging.error("Failed to calculate hourly usage")
 
-# ... (rest of the functions remain the same)
+def cleanup_old_data():
+    sql = "CALL cleanup_old_data();"
+    result = execute_sql(sql)
+    if result is not None:
+        logging.info(f"Cleaned up old data at {datetime.now()}")
+    else:
+        logging.error("Failed to clean up old data")
+
+def should_run_cleanup():
+    sql = "SELECT MAX(timestamp) FROM user_usage_snapshots;"
+    result = execute_sql(sql)
+    if result and result.lower() != 'null' and result != '':
+        try:
+            last_snapshot = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+            return datetime.now() - last_snapshot > timedelta(days=60)
+        except ValueError:
+            logging.error(f"Unexpected date format: {result}")
+    return False
 
 def main():
     logging.info("Starting usage tracking system...")
