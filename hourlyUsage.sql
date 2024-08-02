@@ -34,7 +34,7 @@ FROM marzban.users;
 
 -- Create procedure to insert current usage for all users
 DELIMITER //
-CREATE OR REPLACE PROCEDURE InsertCurrentUsage()
+CREATE OR REPLACE PROCEDURE insert_current_usage()
 BEGIN
     INSERT INTO UsageSnapshots (user_id, timestamp, total_usage)
     SELECT id, NOW(), COALESCE(used_traffic, 0)
@@ -44,7 +44,7 @@ DELIMITER ;
 
 -- Create procedure to calculate usage data
 DELIMITER //
-CREATE OR REPLACE PROCEDURE CalculateUsage()
+CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
     INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp)
     SELECT 
@@ -73,7 +73,7 @@ DELIMITER ;
 
 -- Create procedure to clean up old data
 DELIMITER //
-CREATE OR REPLACE PROCEDURE CleanupOldData()
+CREATE OR REPLACE PROCEDURE cleanup_old_data()
 BEGIN
     DELETE FROM UsageSnapshots
     WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
@@ -87,7 +87,7 @@ DELIMITER ;
 
 -- Create procedure to retrieve historical usage data
 DELIMITER //
-CREATE OR REPLACE PROCEDURE GetHistoricalUsage(IN p_start_time DATETIME, IN p_end_time DATETIME)
+CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
 BEGIN
     SELECT user_id, username, usage_in_period, timestamp
     FROM PeriodicUsage
