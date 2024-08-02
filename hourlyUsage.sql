@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS user_hourly_usage (
 
 -- Create procedure to insert current usage for all users
 DELIMITER //
-CREATE OR REPLACE PROCEDURE insert_current_usage(IN current_timestamp DATETIME)
+CREATE OR REPLACE PROCEDURE insert_current_usage()
 BEGIN
     -- This procedure is now called from Python code with pre-fetched data
     -- The actual insertion is handled in the Python script
