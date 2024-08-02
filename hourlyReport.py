@@ -20,13 +20,13 @@ config = load_config()
 
 DB_CONTAINER = config.get('db_container')
 DB_PASSWORD = config.get('db_password')
-MARZBAN_DB = 'marzban'  # Assuming this is the name of the Marzban database
+MARZBAN_DB = 'marzban'
 
 if not all([DB_CONTAINER, DB_PASSWORD]):
     raise ValueError("Missing database configuration in config file")
 
 def execute_sql(sql_command, db_name='user_usage_tracking'):
-    escaped_command = sql_command.replace('"', '\\"')
+    escaped_command = sql_command.replace('"', '\\"').replace('`', '\\`')
     full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p\"{DB_PASSWORD}\" {db_name} -e \"{escaped_command}\""
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
@@ -45,18 +45,16 @@ def setup_database():
     with open(SQL_FILE, 'r') as file:
         sql_content = file.read()
     
-    # Create the database if it doesn't exist
-    create_db_command = "CREATE DATABASE IF NOT EXISTS user_usage_tracking;"
-    result = execute_sql(create_db_command, MARZBAN_DB)
-    if result is None:
-        logging.error("Failed to create database.")
-        return False
+    # Split the SQL content into individual commands
+    sql_commands = sql_content.split(';')
     
-    # Execute the SQL file content
-    result = execute_sql(sql_content)
-    if result is None:
-        logging.error("Failed to execute SQL file content.")
-        return False
+    for command in sql_commands:
+        command = command.strip()
+        if command:
+            result = execute_sql(command, MARZBAN_DB)
+            if result is None:
+                logging.error(f"Failed to execute SQL command: {command[:50]}...")
+                return False
     
     logging.info("Database setup completed successfully.")
     return True
@@ -81,8 +79,8 @@ def calculate_and_display_hourly_usage():
 
 def cleanup_old_data():
     sql = """
-    DELETE FROM user_usage_tracking.user_usage_snapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    DELETE FROM user_usage_tracking.user_hourly_usage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM user_usage_snapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM user_hourly_usage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
     """
     result = execute_sql(sql)
     if result is not None:
@@ -91,7 +89,7 @@ def cleanup_old_data():
         logging.error("Failed to clean up old data")
 
 def should_run_cleanup():
-    sql = "SELECT MAX(timestamp) FROM user_usage_tracking.user_usage_snapshots;"
+    sql = "SELECT MAX(timestamp) FROM user_usage_snapshots;"
     result = execute_sql(sql)
     if result is not None:
         result = result.strip().split('\n')[-1]  # Get the last line

@@ -51,7 +51,6 @@ BEGIN
     WHERE
         new.timestamp > DATE_SUB(current_timestamp, INTERVAL 1 HOUR);
 
-    -- Return the inserted data for display
     SELECT user_id, username, usage_in_last_hour, timestamp
     FROM user_hourly_usage
     WHERE timestamp = current_timestamp;
