@@ -94,5 +94,4 @@ DELIMITER ;
 
 -- Grant necessary permissions (adjust as needed for security)
 -- Note: This assumes you're using the same user for both databases. Adjust if different.
-GRANT SELECT ON marzban.users TO 'your_username'@'localhost';
-GRANT ALL PRIVILEGES ON user_usage_tracking.* TO 'your_username'@'localhost';
+
