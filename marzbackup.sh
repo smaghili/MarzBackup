@@ -9,6 +9,7 @@ LOG_FILE="/var/log/marzbackup.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
+USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -105,6 +106,14 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
+                
+                # Start user usage tracking if it's installed
+                if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
+                    echo "Starting user usage tracking system..."
+                    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+                    echo $! > "$USAGE_PID_FILE"
+                    echo "User usage tracking system started."
+                fi
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
@@ -128,6 +137,14 @@ stop() {
         echo "MarzBackup stopped."
     else
         echo "MarzBackup is not running or PID file not found."
+    fi
+
+    # Stop user usage tracking if it's running
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        kill $PID
+        rm "$USAGE_PID_FILE"
+        echo "User usage tracking system stopped."
     fi
 }
 
@@ -159,6 +176,105 @@ status() {
             echo "No log file found."
         fi
     fi
+
+    # Check status of user usage tracking
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system is running. PID: $PID"
+        else
+            echo "User usage tracking system is not running, but PID file exists. It may have crashed."
+            rm "$USAGE_PID_FILE"
+        fi
+    else
+        echo "User usage tracking system is not running."
+    fi
+}
+
+install_user_usage() {
+    echo "Installing user usage tracking system..."
+    
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system is already running."
+            return
+        else
+            echo "Stale PID file found. Removing it."
+            rm "$USAGE_PID_FILE"
+        fi
+    fi
+    
+    # Check if jq is installed
+    if ! command -v jq &> /dev/null; then
+        echo "jq is not installed. Installing jq..."
+        sudo apt-get update && sudo apt-get install -y jq
+    fi
+    
+    # Load config and update it
+    python3 "$INSTALL_DIR/config.py"
+    
+    # Read database information directly from config.json
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: Config file not found at $CONFIG_FILE"
+        exit 1
+    fi
+    
+    config=$(cat "$CONFIG_FILE")
+    db_container=$(echo $config | jq -r '.db_container')
+    db_password=$(echo $config | jq -r '.db_password')
+    db_name=$(echo $config | jq -r '.db_name')
+    db_type=$(echo $config | jq -r '.db_type')
+
+    # Validate database information
+    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ] || [ -z "$db_type" ]; then
+        echo "Error: Missing database configuration. Please check your config.json file."
+        exit 1
+    fi
+
+    # Check if the database container is running
+    if ! docker ps | grep -q "$db_container"; then
+        echo "Error: Database container $db_container is not running."
+        exit 1
+    fi
+
+    # Execute SQL script
+    echo "Setting up database structures using $db_type..."
+    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' $db_name" < "$INSTALL_DIR/hourlyUsage.sql"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
+        exit 1
+    fi
+    
+    # Start hourly report script
+    echo "Starting hourly report script..."
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    echo $! > "$USAGE_PID_FILE"
+    
+    # Set a flag in the config file to indicate that user usage tracking is installed
+    jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+    
+    echo "User usage tracking system installed and started."
+}
+
+stop_user_usage() {
+    echo "Stopping user usage tracking system..."
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            kill $PID
+            rm "$USAGE_PID_FILE"
+            echo "User usage tracking system stopped."
+        else
+            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
+            rm "$USAGE_PID_FILE"
+        fi
+    else
+        echo "User usage tracking system is not running."
+    fi
+
+    # Remove the flag from the config file
+    jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 }
 
 case "$1" in
@@ -177,8 +293,24 @@ case "$1" in
     status)
         status
         ;;
+    install)
+        if [ "$2" == "user-usage" ]; then
+            install_user_usage
+        else
+            echo "Unknown install option: $2"
+            echo "Usage: marzbackup install user-usage"
+            exit 1
+        fi
+        ;;
+    stop)
+        if [ "$2" == "user-usage" ]; then
+            stop_user_usage
+        else
+            stop
+        fi
+        ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install user-usage|stop user-usage}"
         exit 1
         ;;
 esac
