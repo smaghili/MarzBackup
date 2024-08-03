@@ -69,12 +69,6 @@ update() {
                 exit 1
             fi
         fi
-        
-        # Check if user usage tracking was previously installed and restart it
-        if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
-            echo "User usage tracking was previously installed. Restarting it..."
-            restart_user_usage
-        fi
     else
         echo "MarzBackup is not installed. Please install it first."
         exit 1
@@ -113,6 +107,11 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
+                
+                # Start user usage tracking if it's installed
+                if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
+                    start_user_usage
+                fi
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
@@ -186,13 +185,9 @@ status() {
 
 start_user_usage() {
     echo "Starting user usage tracking system..."
-    if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
-        nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
-        echo $! > "$USAGE_PID_FILE"
-        echo "User usage tracking system started."
-    else
-        echo "User usage tracking system is not installed. Please run 'marzbackup install user-usage' first."
-    fi
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    echo $! > "$USAGE_PID_FILE"
+    echo "User usage tracking system started."
 }
 
 stop_user_usage() {
@@ -279,8 +274,77 @@ install_user_usage() {
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
+    echo "Starting user usage tracking system..."
+    start_user_usage
+    
     echo "User usage tracking system installation completed."
-    echo "To start the user usage tracking, run: marzbackup start user-usage"
+}
+
+uninstall_user_usage() {
+    echo "Uninstalling user usage tracking system..."
+    
+    # Stop the user usage tracking system
+    stop_user_usage
+    
+    # Load configuration
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: Config file not found at $CONFIG_FILE"
+        exit 1
+    fi
+    
+    config=$(cat "$CONFIG_FILE")
+    db_container=$(echo $config | jq -r '.db_container')
+    db_password=$(echo $config | jq -r '.db_password')
+    db_type=$(echo $config | jq -r '.db_type')
+
+    # Validate database information
+    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_type" ]; then
+        echo "Error: Missing database configuration. Please check your config.json file."
+        exit 1
+    fi
+
+    # Drop the UserUsageAnalytics database
+    echo "Dropping UserUsageAnalytics database..."
+    docker exec -i "$db_container" "$db_type" -u root -p"$db_password" -e "DROP DATABASE IF EXISTS UserUsageAnalytics;"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to drop the UserUsageAnalytics database. Please check your database credentials and permissions."
+        exit 1
+    else
+        echo "UserUsageAnalytics database dropped successfully."
+    fi
+
+    # Remove the user_usage_installed flag from the config file
+    jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+    
+    echo "User usage tracking system has been uninstalled."
+}
+
+uninstall_marzbackup() {
+    echo "WARNING: This will completely remove MarzBackup, including all settings and data."
+    echo "Are you sure you want to proceed? (y/N)"
+    read -r response
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+        echo "Proceeding with uninstallation..."
+
+        # Stop MarzBackup and user usage tracking
+        stop
+        stop_user_usage
+
+        # Uninstall user usage tracking system
+        uninstall_user_usage
+
+        # Remove MarzBackup files and directories
+        sudo rm -rf "$INSTALL_DIR"
+        sudo rm -rf "$CONFIG_DIR"
+        sudo rm -f "$LOG_FILE"
+        sudo rm -f "$PID_FILE"
+        sudo rm -f "$USAGE_PID_FILE"
+        sudo rm -f "$SCRIPT_PATH"
+
+        echo "MarzBackup has been completely uninstalled."
+    else
+        echo "Uninstallation cancelled."
+    fi
 }
 
 case "$1" in
@@ -288,11 +352,7 @@ case "$1" in
         update $@
         ;;
     start)
-        if [ "$2" == "user-usage" ]; then
-            start_user_usage
-        else
-            start
-        fi
+        start
         ;;
     stop)
         if [ "$2" == "user-usage" ]; then
@@ -320,8 +380,19 @@ case "$1" in
             exit 1
         fi
         ;;
+    uninstall)
+        if [ "$2" == "user-usage" ]; then
+            uninstall_user_usage
+        elif [ -z "$2" ]; then
+            uninstall_marzbackup
+        else
+            echo "Unknown uninstall option: $2"
+            echo "Usage: marzbackup uninstall [user-usage]"
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status|install user-usage}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage|uninstall [user-usage]}"
         exit 1
         ;;
 esac
