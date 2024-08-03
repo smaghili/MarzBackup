@@ -69,6 +69,12 @@ update() {
                 exit 1
             fi
         fi
+        
+        # Check if user usage tracking was previously installed and restart it
+        if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
+            echo "User usage tracking was previously installed. Restarting it..."
+            restart_user_usage
+        fi
     else
         echo "MarzBackup is not installed. Please install it first."
         exit 1
@@ -107,11 +113,6 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
-                
-                # Start user usage tracking if it's installed
-                if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
-                    start_user_usage
-                fi
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
@@ -185,9 +186,13 @@ status() {
 
 start_user_usage() {
     echo "Starting user usage tracking system..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
-    echo $! > "$USAGE_PID_FILE"
-    echo "User usage tracking system started."
+    if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
+        nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+        echo $! > "$USAGE_PID_FILE"
+        echo "User usage tracking system started."
+    else
+        echo "User usage tracking system is not installed. Please run 'marzbackup install user-usage' first."
+    fi
 }
 
 stop_user_usage() {
@@ -274,10 +279,8 @@ install_user_usage() {
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
-    echo "Starting user usage tracking system..."
-    start_user_usage
-    
     echo "User usage tracking system installation completed."
+    echo "To start the user usage tracking, run: marzbackup start user-usage"
 }
 
 case "$1" in
@@ -285,7 +288,11 @@ case "$1" in
         update $@
         ;;
     start)
-        start
+        if [ "$2" == "user-usage" ]; then
+            start_user_usage
+        else
+            start
+        fi
         ;;
     stop)
         if [ "$2" == "user-usage" ]; then
@@ -314,7 +321,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage}"
+        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status|install user-usage}"
         exit 1
         ;;
 esac
