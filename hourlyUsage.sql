@@ -25,8 +25,7 @@ CREATE TABLE IF NOT EXISTS PeriodicUsage (
     usage_in_period BIGINT NOT NULL,
     timestamp DATETIME NOT NULL,
     report_number INT NOT NULL,
-    INDEX idx_user_timestamp (user_id, timestamp),
-    INDEX idx_report_number (report_number)
+    INDEX idx_user_timestamp (user_id, timestamp)
 );
 
 -- Create a view that links to the users table in the main database
@@ -48,23 +47,18 @@ DELIMITER ;
 DELIMITER //
 CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
-    DECLARE v_report_number INT;
-    DECLARE v_last_report_time DATETIME;
+    DECLARE current_report_number INT;
     
-    -- Get the next report number
-    SELECT COALESCE(MAX(report_number), 0) + 1 INTO v_report_number FROM PeriodicUsage;
+    -- Get the current report number
+    SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
     
-    -- Get the time of the last report
-    SELECT COALESCE(MAX(timestamp), '1970-01-01') INTO v_last_report_time FROM PeriodicUsage;
-
-    -- Insert new usage data for all users
     INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp, report_number)
     SELECT 
         u.id AS user_id,
         u.username,
-        COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0) AS usage_in_period,
+        COALESCE(new.total_usage - old.total_usage, 0) AS usage_in_period,
         NOW() AS timestamp,
-        v_report_number AS report_number
+        current_report_number AS report_number
     FROM 
         v_users u
     LEFT JOIN UsageSnapshots new ON u.id = new.user_id AND new.timestamp = (
@@ -72,15 +66,15 @@ BEGIN
     )
     LEFT JOIN UsageSnapshots old ON u.id = old.user_id AND old.timestamp = (
         SELECT MAX(timestamp) FROM UsageSnapshots 
-        WHERE user_id = u.id AND timestamp <= v_last_report_time
+        WHERE user_id = u.id AND timestamp < new.timestamp
     )
-    ORDER BY u.id;
+    WHERE
+        new.timestamp > (SELECT COALESCE(MAX(timestamp), '1970-01-01') FROM PeriodicUsage);
 
     -- Return the inserted data for display
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
-    WHERE report_number = v_report_number
-    ORDER BY user_id;
+    WHERE report_number = current_report_number;
 END //
 DELIMITER ;
 
@@ -89,10 +83,10 @@ DELIMITER //
 CREATE OR REPLACE PROCEDURE cleanup_old_data()
 BEGIN
     DELETE FROM UsageSnapshots
-    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 WEEK);
+    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
     
     DELETE FROM PeriodicUsage
-    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 MONTH);
+    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
     
     INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
 END //
@@ -105,6 +99,6 @@ BEGIN
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY report_number, user_id;
+    ORDER BY timestamp, user_id;
 END //
 DELIMITER ;
