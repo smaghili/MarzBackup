@@ -62,10 +62,7 @@ BEGIN
     SELECT 
         u.id AS user_id,
         u.username,
-        CASE
-            WHEN v_report_number = 1 THEN 0  -- Set first report to 0
-            ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
-        END AS usage_in_period,
+        COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0) AS usage_in_period,
         NOW() AS timestamp,
         v_report_number AS report_number
     FROM 
@@ -109,28 +106,5 @@ BEGIN
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
     ORDER BY report_number, user_id;
-END //
-DELIMITER ;
-
--- Create procedure to check usage data
-DELIMITER //
-CREATE OR REPLACE PROCEDURE check_usage_data()
-BEGIN
-    -- Check first report
-    SELECT 'First Report' AS check_type, 
-           COUNT(*) AS total_users,
-           SUM(CASE WHEN usage_in_period = 0 THEN 1 ELSE 0 END) AS users_with_zero_usage
-    FROM PeriodicUsage
-    WHERE report_number = 1;
-
-    -- Check subsequent reports
-    SELECT 'Subsequent Reports' AS check_type,
-           report_number,
-           COUNT(*) AS total_users,
-           SUM(CASE WHEN usage_in_period > 0 THEN 1 ELSE 0 END) AS users_with_usage
-    FROM PeriodicUsage
-    WHERE report_number > 1
-    GROUP BY report_number
-    ORDER BY report_number;
 END //
 DELIMITER ;
