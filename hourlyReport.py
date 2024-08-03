@@ -36,27 +36,14 @@ def insert_usage_data():
     else:
         print("Failed to insert usage snapshot")
 
-def calculate_and_display_usage():
+def calculate_and_display_hourly_usage():
     sql = "CALL calculate_usage();"
     result = execute_sql(sql)
     if result is not None:
         print(f"Usage in the last period:")
-        # Parse and format the result
-        lines = result.strip().split('\n')[1:]  # Skip the header
-        for line in lines:
-            user_id, username, usage, timestamp, report_number = line.split('\t')
-            print(f"user_id: {user_id}, username: {username}, usage_in_period: {usage}, timestamp: {timestamp}, report_number: {report_number}")
-    else:
-        print("Failed to calculate usage")
-
-def check_usage_data():
-    sql = "CALL check_usage_data();"
-    result = execute_sql(sql)
-    if result is not None:
-        print("Usage data check:")
         print(result)
     else:
-        print("Failed to check usage data")
+        print("Failed to calculate usage")
 
 def cleanup_old_data():
     sql = "CALL cleanup_old_data();"
@@ -65,6 +52,30 @@ def cleanup_old_data():
         print(f"Cleaned up old data at {datetime.now()}")
     else:
         print("Failed to clean up old data")
+
+def should_run_cleanup():
+    sql = "SELECT MAX(cleanup_time) FROM CleanupLog;"
+    result = execute_sql(sql)
+    if result is not None:
+        result = result.strip().split('\n')[-1]  # Get the last line
+        if result.lower() == 'null' or result == '':
+            return True  # If no cleanup has been done, we should run it
+        try:
+            last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+            return datetime.now() - last_cleanup > timedelta(days=1)  # Run cleanup daily
+        except ValueError:
+            print(f"Unexpected date format: {result}")
+            return False
+    return False
+
+def get_historical_hourly_usage(start_time, end_time):
+    sql = f"CALL get_historical_usage('{start_time}', '{end_time}');"
+    result = execute_sql(sql)
+    if result is not None:
+        print(f"Historical usage between {start_time} and {end_time}:")
+        print(result)
+    else:
+        print("Failed to get historical usage")
 
 def main():
     print("Starting usage tracking system...")
@@ -84,13 +95,13 @@ def main():
             # Insert usage data and calculate usage every interval
             if now - last_insert >= timedelta(minutes=report_interval):
                 insert_usage_data()
-                calculate_and_display_usage()
-                check_usage_data()
+                calculate_and_display_hourly_usage()
                 last_insert = now
             
             # Check for cleanup daily
             if now - last_cleanup_check >= timedelta(days=1):
-                cleanup_old_data()
+                if should_run_cleanup():
+                    cleanup_old_data()
                 last_cleanup_check = now
             
             time.sleep(60)  # Check every minute
