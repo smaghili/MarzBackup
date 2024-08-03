@@ -6,6 +6,7 @@ TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
+USAGE_LOG_FILE="/var/log/marzbackup_usage.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -107,11 +108,6 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
-                
-                # Start user usage tracking if it's installed
-                if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
-                    start_user_usage
-                fi
             else
                 echo "Failed to start the bot. Check logs for details."
                 cat "$LOG_FILE"
@@ -136,8 +132,6 @@ stop() {
     else
         echo "MarzBackup is not running or PID file not found."
     fi
-
-    stop_user_usage
 }
 
 restart() {
@@ -168,26 +162,36 @@ status() {
             echo "No log file found."
         fi
     fi
-
-    # Check status of user usage tracking
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            echo "User usage tracking system is running. PID: $PID"
-        else
-            echo "User usage tracking system is not running, but PID file exists. It may have crashed."
-            rm "$USAGE_PID_FILE"
-        fi
-    else
-        echo "User usage tracking system is not running."
-    fi
 }
 
 start_user_usage() {
     echo "Starting user usage tracking system..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system is already running. Use 'marzbackup restart user-usage' to restart it."
+            return
+        else
+            echo "Stale PID file found. Removing it."
+            rm "$USAGE_PID_FILE"
+        fi
+    fi
+    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$USAGE_LOG_FILE" 2>&1 &
     echo $! > "$USAGE_PID_FILE"
-    echo "User usage tracking system started."
+    sleep 2
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system started. PID: $PID"
+            echo "To view usage logs, use: tail -f $USAGE_LOG_FILE"
+        else
+            echo "Failed to start the user usage tracking system. Check logs for details."
+            cat "$USAGE_LOG_FILE"
+        fi
+    else
+        echo "Failed to start the user usage tracking system. PID file not created."
+        cat "$USAGE_LOG_FILE"
+    fi
 }
 
 stop_user_usage() {
@@ -211,6 +215,30 @@ restart_user_usage() {
     stop_user_usage
     sleep 2
     start_user_usage
+}
+
+status_user_usage() {
+    if [ -f "$USAGE_PID_FILE" ]; then
+        PID=$(cat "$USAGE_PID_FILE")
+        if ps -p $PID > /dev/null; then
+            echo "User usage tracking system is running. PID: $PID"
+            echo "Last 10 lines of usage log:"
+            tail -n 10 "$USAGE_LOG_FILE"
+        else
+            echo "User usage tracking system is not running, but PID file exists. It may have crashed."
+            echo "Last 20 lines of usage log:"
+            tail -n 20 "$USAGE_LOG_FILE"
+            rm "$USAGE_PID_FILE"
+        fi
+    else
+        echo "User usage tracking system is not running."
+        if [ -f "$USAGE_LOG_FILE" ]; then
+            echo "Last 20 lines of usage log:"
+            tail -n 20 "$USAGE_LOG_FILE"
+        else
+            echo "No usage log file found."
+        fi
+    fi
 }
 
 install_user_usage() {
@@ -316,6 +344,9 @@ uninstall_user_usage() {
     # Remove the user_usage_installed flag from the config file
     jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
+    # Remove usage log file
+    sudo rm -f "$USAGE_LOG_FILE"
+    
     echo "User usage tracking system has been uninstalled."
 }
 
@@ -337,10 +368,11 @@ uninstall_marzbackup() {
         sudo rm -rf "$INSTALL_DIR"
         sudo rm -rf "$CONFIG_DIR"
         sudo rm -f "$LOG_FILE"
+        sudo rm -f "$USAGE_LOG_FILE"
         sudo rm -f "$PID_FILE"
         sudo rm -f "$USAGE_PID_FILE"
         sudo rm -f "$SCRIPT_PATH"
-
+        
         echo "MarzBackup has been completely uninstalled."
     else
         echo "Uninstallation cancelled."
@@ -352,7 +384,11 @@ case "$1" in
         update $@
         ;;
     start)
-        start
+        if [ "$2" == "user-usage" ]; then
+            start_user_usage
+        else
+            start
+        fi
         ;;
     stop)
         if [ "$2" == "user-usage" ]; then
@@ -369,7 +405,11 @@ case "$1" in
         fi
         ;;
     status)
-        status
+        if [ "$2" == "user-usage" ]; then
+            status_user_usage
+        else
+            status
+        fi
         ;;
     install)
         if [ "$2" == "user-usage" ]; then
@@ -392,7 +432,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage|uninstall [user-usage]}"
+        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]}"
         exit 1
         ;;
 esac
