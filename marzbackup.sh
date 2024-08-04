@@ -243,8 +243,12 @@ install_user_usage() {
         exit 1
     fi
     
-    # Install crontab for hourlyReport.py
-    echo "Installing crontab for user usage tracking..."
+    # Remove existing crontab entry for hourlyReport.py
+    echo "Removing existing crontab entry for user usage tracking..."
+    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
+    
+    # Install new crontab for hourlyReport.py
+    echo "Installing new crontab for user usage tracking..."
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 $INSTALL_DIR/hourlyReport.py >> $USAGE_LOG_FILE 2>&1") | crontab -
     
     echo "User usage tracking system installation completed."
@@ -254,8 +258,15 @@ install_user_usage() {
 uninstall_user_usage() {
     echo "Uninstalling user usage tracking system..."
     
-    # Remove crontab entry
-    crontab -l | grep -v "hourlyReport.py" | crontab -
+    # Remove crontab entry specifically for MarzBackup
+    crontab -l | grep -v "/opt/MarzBackup/hourlyReport.py" | crontab -
+    
+    # Verify crontab removal
+    if crontab -l | grep -q "/opt/MarzBackup/hourlyReport.py"; then
+        echo "Warning: Failed to remove crontab entry. Please check manually."
+    else
+        echo "Crontab entry for MarzBackup successfully removed."
+    fi
     
     # Load configuration
     if [ ! -f "$CONFIG_FILE" ]; then
