@@ -1,49 +1,16 @@
--- Create the database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS UserUsageAnalytics;
-USE UserUsageAnalytics;
-
--- Create table for storing usage snapshots
-CREATE TABLE IF NOT EXISTS UsageSnapshots (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    total_usage BIGINT NOT NULL,
-    INDEX idx_user_timestamp (user_id, timestamp)
-);
-
--- Create table for cleanup log
-CREATE TABLE IF NOT EXISTS CleanupLog (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    cleanup_time DATETIME NOT NULL
-);
-
--- Create a new table for storing periodic usage data
-CREATE TABLE IF NOT EXISTS PeriodicUsage (
+-- Modify the PeriodicUsage table
+DROP TABLE IF EXISTS PeriodicUsage;
+CREATE TABLE PeriodicUsage (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     username VARCHAR(255) NOT NULL,
     usage_in_period BIGINT NOT NULL,
     timestamp DATETIME NOT NULL,
     report_number INT NOT NULL,
-    INDEX idx_user_timestamp (user_id, timestamp)
+    INDEX idx_user_report (user_id, report_number)
 );
 
--- Create a view that links to the users table in the main database
-CREATE OR REPLACE SQL SECURITY INVOKER VIEW v_users AS
-SELECT id, username, used_traffic
-FROM marzban.users;
-
--- Create procedure to insert current usage for all users
-DELIMITER //
-CREATE OR REPLACE PROCEDURE insert_current_usage()
-BEGIN
-    INSERT INTO UsageSnapshots (user_id, timestamp, total_usage)
-    SELECT id, NOW(), COALESCE(used_traffic, 0)
-    FROM v_users;
-END //
-DELIMITER ;
-
--- Create procedure to calculate usage data
+-- Modify the calculate_usage procedure
 DELIMITER //
 CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
@@ -69,16 +36,30 @@ BEGIN
         WHERE user_id = u.id AND timestamp < new.timestamp
     )
     WHERE
-        new.timestamp > (SELECT COALESCE(MAX(timestamp), '1970-01-01') FROM PeriodicUsage);
+        new.timestamp > (SELECT COALESCE(MAX(timestamp), '1970-01-01') FROM PeriodicUsage)
+    ORDER BY u.id;
 
     -- Return the inserted data for display
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
-    WHERE report_number = current_report_number;
+    WHERE report_number = current_report_number
+    ORDER BY user_id;
 END //
 DELIMITER ;
 
--- Create procedure to clean up old data
+-- Add a procedure to reset the auto-increment value
+DELIMITER //
+CREATE OR REPLACE PROCEDURE reset_periodic_usage_auto_increment()
+BEGIN
+    SET @max_id = (SELECT COALESCE(MAX(id), 0) FROM PeriodicUsage);
+    SET @sql = CONCAT('ALTER TABLE PeriodicUsage AUTO_INCREMENT = ', @max_id + 1);
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+DELIMITER ;
+
+-- Modify the cleanup procedure to reset auto-increment after cleanup
 DELIMITER //
 CREATE OR REPLACE PROCEDURE cleanup_old_data()
 BEGIN
@@ -88,17 +69,8 @@ BEGIN
     DELETE FROM PeriodicUsage
     WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
     
+    CALL reset_periodic_usage_auto_increment();
+    
     INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
-END //
-DELIMITER ;
-
--- Create procedure to retrieve historical usage data
-DELIMITER //
-CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
-BEGIN
-    SELECT user_id, username, usage_in_period, timestamp, report_number
-    FROM PeriodicUsage
-    WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY timestamp, user_id;
 END //
 DELIMITER ;
