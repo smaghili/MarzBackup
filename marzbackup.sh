@@ -11,7 +11,6 @@ PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
-SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -164,91 +163,26 @@ status() {
     fi
 }
 
-start_user_usage() {
-    echo "Starting user usage tracking system..."
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            echo "User usage tracking system is already running. Use 'marzbackup restart user-usage' to restart it."
-            return
-        else
-            echo "Stale PID file found. Removing it."
-            rm "$USAGE_PID_FILE"
-        fi
-    fi
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$USAGE_LOG_FILE" 2>&1 &
-    echo $! > "$USAGE_PID_FILE"
-    sleep 2
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            echo "User usage tracking system started. PID: $PID"
-            echo "To view usage logs, use: tail -f $USAGE_LOG_FILE"
-        else
-            echo "Failed to start the user usage tracking system. Check logs for details."
-            cat "$USAGE_LOG_FILE"
-        fi
+convert_to_cron() {
+    local minutes=$1
+    if [ $minutes -eq 60 ]; then
+        echo "0 * * * *"
+    elif [ $minutes -lt 60 ]; then
+        echo "*/$minutes * * * *"
     else
-        echo "Failed to start the user usage tracking system. PID file not created."
-        cat "$USAGE_LOG_FILE"
-    fi
-}
-
-stop_user_usage() {
-    echo "Stopping user usage tracking system..."
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            kill $PID
-            rm "$USAGE_PID_FILE"
-            echo "User usage tracking system stopped."
+        local hours=$((minutes / 60))
+        local remaining_minutes=$((minutes % 60))
+        if [ $remaining_minutes -eq 0 ]; then
+            echo "0 */$hours * * *"
         else
-            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
-            rm "$USAGE_PID_FILE"
-        fi
-    else
-        echo "User usage tracking system is not running."
-    fi
-}
-
-restart_user_usage() {
-    stop_user_usage
-    sleep 2
-    start_user_usage
-}
-
-status_user_usage() {
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            echo "User usage tracking system is running. PID: $PID"
-            echo "Last 10 lines of usage log:"
-            tail -n 10 "$USAGE_LOG_FILE"
-        else
-            echo "User usage tracking system is not running, but PID file exists. It may have crashed."
-            echo "Last 20 lines of usage log:"
-            tail -n 20 "$USAGE_LOG_FILE"
-            rm "$USAGE_PID_FILE"
-        fi
-    else
-        echo "User usage tracking system is not running."
-        if [ -f "$USAGE_LOG_FILE" ]; then
-            echo "Last 20 lines of usage log:"
-            tail -n 20 "$USAGE_LOG_FILE"
-        else
-            echo "No usage log file found."
+            echo "ERROR: Invalid time interval. Please use intervals that divide evenly into hours."
+            return 1
         fi
     fi
 }
 
 install_user_usage() {
     echo "Installing user usage tracking system..."
-    
-    # Force removal of USAGE_PID_FILE if it exists
-    if [ -f "$USAGE_PID_FILE" ]; then
-        echo "Removing existing PID file..."
-        rm "$USAGE_PID_FILE"
-    fi
     
     # Check if jq is installed
     if ! command -v jq &> /dev/null; then
@@ -269,6 +203,7 @@ install_user_usage() {
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
     db_type=$(echo $config | jq -r '.db_type')
+    report_interval=$(echo $config | jq -r '.report_interval // 60')
 
     # Validate database information
     if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_type" ]; then
@@ -283,10 +218,9 @@ install_user_usage() {
     fi
 
     # Execute SQL script to create the database and required tables and procedures
+    SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"
     if [ -f "$SQL_FILE" ]; then
         echo "Setting up database structures using $db_type..."
-        # Print the command with actual values (for debugging purposes)
-        echo "Executing: docker exec -i $db_container $db_type -u root -p<password> < $SQL_FILE"
         docker exec -i "$db_container" "$db_type" -u root -p"$db_password" < "$SQL_FILE"
         if [ $? -ne 0 ]; then
             echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
@@ -302,17 +236,26 @@ install_user_usage() {
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
-    echo "Starting user usage tracking system..."
-    start_user_usage
+    # Convert report interval to cron format
+    cron_schedule=$(convert_to_cron $report_interval)
+    if [ $? -ne 0 ]; then
+        echo "$cron_schedule"
+        exit 1
+    fi
+    
+    # Install crontab for hourlyReport.py
+    echo "Installing crontab for user usage tracking..."
+    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 $INSTALL_DIR/hourlyReport.py >> $USAGE_LOG_FILE 2>&1") | crontab -
     
     echo "User usage tracking system installation completed."
+    echo "Report interval set to every $report_interval minutes."
 }
 
 uninstall_user_usage() {
     echo "Uninstalling user usage tracking system..."
     
-    # Stop the user usage tracking system
-    stop_user_usage
+    # Remove crontab entry
+    crontab -l | grep -v "hourlyReport.py" | crontab -
     
     # Load configuration
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -357,9 +300,8 @@ uninstall_marzbackup() {
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
         echo "Proceeding with uninstallation..."
 
-        # Stop MarzBackup and user usage tracking
+        # Stop MarzBackup
         stop
-        stop_user_usage
 
         # Uninstall user usage tracking system
         uninstall_user_usage
@@ -370,7 +312,6 @@ uninstall_marzbackup() {
         sudo rm -f "$LOG_FILE"
         sudo rm -f "$USAGE_LOG_FILE"
         sudo rm -f "$PID_FILE"
-        sudo rm -f "$USAGE_PID_FILE"
         sudo rm -f "$SCRIPT_PATH"
         
         echo "MarzBackup has been completely uninstalled."
@@ -384,32 +325,16 @@ case "$1" in
         update $@
         ;;
     start)
-        if [ "$2" == "user-usage" ]; then
-            start_user_usage
-        else
-            start
-        fi
+        start
         ;;
     stop)
-        if [ "$2" == "user-usage" ]; then
-            stop_user_usage
-        else
-            stop
-        fi
+        stop
         ;;
     restart)
-        if [ "$2" == "user-usage" ]; then
-            restart_user_usage
-        else
-            restart
-        fi
+        restart
         ;;
     status)
-        if [ "$2" == "user-usage" ]; then
-            status_user_usage
-        else
-            status
-        fi
+        status
         ;;
     install)
         if [ "$2" == "user-usage" ]; then
@@ -432,7 +357,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install user-usage|uninstall [user-usage]}"
         exit 1
         ;;
 esac
