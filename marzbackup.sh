@@ -11,6 +11,7 @@ PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
+LOCK_FILE="/var/run/hourlyReport.lock"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
@@ -181,8 +182,50 @@ convert_to_cron() {
     fi
 }
 
+check_hourlyreport_running() {
+    if [ -f "$LOCK_FILE" ]; then
+        PID=$(cat "$LOCK_FILE")
+        if ps -p $PID > /dev/null; then
+            return 0  # Process is running
+        else
+            rm -f "$LOCK_FILE"  # Remove stale lock file
+        fi
+    fi
+    return 1  # Process is not running
+}
+
+start_hourlyreport() {
+    if check_hourlyreport_running; then
+        echo "hourlyReport.py is already running. Cannot start a new instance."
+        return 1
+    fi
+
+    echo $$ > "$LOCK_FILE"
+    nohup python3 /opt/MarzBackup/hourlyReport.py >> "$USAGE_LOG_FILE" 2>&1 &
+    echo "hourlyReport.py started with PID: $!"
+    return 0
+}
+
+stop_user_usage_processes() {
+    echo "Stopping hourlyReport.py process..."
+    if [ -f "$LOCK_FILE" ]; then
+        PID=$(cat "$LOCK_FILE")
+        kill $PID
+        rm -f "$LOCK_FILE"
+        echo "hourlyReport.py process (PID: $PID) has been stopped."
+    else
+        echo "No running hourlyReport.py process found."
+    fi
+}
+
 install_user_usage() {
     echo "Installing user usage tracking system..."
+    
+    # Check if hourlyReport.py is already running
+    if check_hourlyreport_running; then
+        echo "hourlyReport.py is already running. Please stop it before installation."
+        return 1
+    fi
     
     # Check if jq is installed
     if ! command -v jq &> /dev/null; then
@@ -251,12 +294,18 @@ install_user_usage() {
     echo "Installing new crontab for user usage tracking..."
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 $INSTALL_DIR/hourlyReport.py >> $USAGE_LOG_FILE 2>&1") | crontab -
     
+    # Start hourlyReport.py
+    start_hourlyreport
+    
     echo "User usage tracking system installation completed."
     echo "Report interval set to every $report_interval minutes."
 }
 
 uninstall_user_usage() {
     echo "Uninstalling user usage tracking system..."
+    
+    # Stop hourlyReport.py process
+    stop_user_usage_processes
     
     # Remove crontab entry specifically for MarzBackup
     crontab -l | grep -v "/opt/MarzBackup/hourlyReport.py" | crontab -
@@ -304,6 +353,21 @@ uninstall_user_usage() {
     echo "User usage tracking system has been uninstalled."
 }
 
+start_user_usage() {
+    echo "Starting user usage tracking system..."
+    if start_hourlyreport; then
+        echo "User usage tracking system started successfully."
+    else
+        echo "Failed to start user usage tracking system."
+    fi
+}
+
+stop_user_usage() {
+    echo "Stopping user usage tracking system..."
+    stop_user_usage_processes
+    echo "User usage tracking system stopped."
+}
+
 uninstall_marzbackup() {
     echo "WARNING: This will completely remove MarzBackup, including all settings and data."
     echo "Are you sure you want to proceed? (y/N)"
@@ -324,6 +388,7 @@ uninstall_marzbackup() {
         sudo rm -f "$USAGE_LOG_FILE"
         sudo rm -f "$PID_FILE"
         sudo rm -f "$SCRIPT_PATH"
+        sudo rm -f "$LOCK_FILE"
         
         echo "MarzBackup has been completely uninstalled."
     else
@@ -336,16 +401,37 @@ case "$1" in
         update $@
         ;;
     start)
-        start
+        if [ "$2" == "user-usage" ]; then
+            start_user_usage
+        else
+            start
+        fi
         ;;
     stop)
-        stop
+        if [ "$2" == "user-usage" ]; then
+            stop_user_usage
+        else
+            stop
+        fi
         ;;
     restart)
-        restart
+        if [ "$2" == "user-usage" ]; then
+            stop_user_usage
+            start_user_usage
+        else
+            restart
+        fi
         ;;
     status)
-        status
+        if [ "$2" == "user-usage" ]; then
+            if check_hourlyreport_running; then
+                echo "hourlyReport.py is running."
+            else
+                echo "hourlyReport.py is not running."
+            fi
+        else
+            status
+        fi
         ;;
     install)
         if [ "$2" == "user-usage" ]; then
@@ -368,7 +454,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status|install user-usage|uninstall [user-usage]}"
+        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]}"
         exit 1
         ;;
 esac
