@@ -208,6 +208,8 @@ start_hourlyreport() {
 
 stop_user_usage_processes() {
     echo "Stopping hourlyReport.py process..."
+    pkill -f "python3 /opt/MarzBackup/hourlyReport.py"
+    pkill -f "/opt/MarzBackup/hourlyReport.py"
     if [ -f "$LOCK_FILE" ]; then
         PID=$(cat "$LOCK_FILE")
         kill $PID
