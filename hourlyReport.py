@@ -1,9 +1,6 @@
 import subprocess
-import time
 import json
-import os
 from datetime import datetime, timedelta
-import schedule
 
 CONFIG_FILE_PATH = "/opt/marzbackup/config.json"
 
@@ -15,6 +12,7 @@ config = load_config()
 
 DB_CONTAINER = config.get('db_container')
 DB_PASSWORD = config.get('db_password')
+REPORT_INTERVAL = config.get('report_interval', 60)  # Default to 60 minutes if not set
 
 if not all([DB_CONTAINER, DB_PASSWORD]):
     raise ValueError("Missing database configuration in config file")
@@ -66,41 +64,29 @@ def should_run_cleanup():
             return True  # If no cleanup has been done, we should run it
         try:
             last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-            return datetime.now() - last_cleanup > timedelta(days=365)  # Run cleanup annually
+            return (datetime.now() - last_cleanup).days >= 365  # Run cleanup annually
         except ValueError:
             print(f"Unexpected date format: {result}")
             return False
     return False
 
-def get_historical_hourly_usage(start_time, end_time):
-    sql = f"CALL get_historical_usage('{start_time}', '{end_time}');"
-    result = execute_sql(sql)
-    if result is not None:
-        print(f"Historical usage between {start_time} and {end_time}:\n{result}")
-    else:
-        print("Failed to get historical usage")
+def is_within_schedule():
+    now = datetime.now()
+    rounded_time = now.replace(minute=0, second=0, microsecond=0)
+    if REPORT_INTERVAL < 60:
+        rounded_time = now.replace(minute=(now.minute // REPORT_INTERVAL) * REPORT_INTERVAL, second=0, microsecond=0)
+    return now - rounded_time < timedelta(minutes=1)
 
-def main():
-    print("Starting usage tracking system...")
-    print(f"Using database on container: {DB_CONTAINER}")
-    
-    # Schedule tasks
-    config = load_config()
-    report_interval = config.get('report_interval', 5)  # Default to 5 minutes if not set
-    
-    schedule.every(report_interval).minutes.do(insert_usage_data)
-    schedule.every(report_interval).minutes.do(calculate_and_display_usage)
-    schedule.every().day.at("00:00").do(lambda: should_run_cleanup() and cleanup_old_data())
-    
-    try:
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Usage tracking system stopped.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        raise
+def run_tasks():
+    if not is_within_schedule():
+        print(f"Current time {datetime.now()} is outside the scheduled execution window. Skipping execution.")
+        return
+
+    print(f"Running tasks at {datetime.now()}")
+    insert_usage_data()
+    calculate_and_display_usage()
+    if should_run_cleanup():
+        cleanup_old_data()
 
 if __name__ == "__main__":
-    main()
+    run_tasks()
