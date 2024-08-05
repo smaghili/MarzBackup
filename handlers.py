@@ -31,9 +31,6 @@ keyboard = types.ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Create a lock for backup process
-backup_in_progress = asyncio.Lock()
-
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
     await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
