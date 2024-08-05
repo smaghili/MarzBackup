@@ -220,6 +220,23 @@ stop_user_usage_processes() {
     fi
 }
 
+update_backup_cron() {
+    local backup_interval=$(jq -r '.backup_interval_minutes // 60' "$CONFIG_FILE")
+    local cron_schedule=$(convert_to_cron $backup_interval)
+    if [ $? -ne 0 ]; then
+        echo "$cron_schedule"
+        return 1
+    fi
+    
+    # Remove existing crontab entry for backup
+    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/backup.py") | crontab -
+    
+    # Install new crontab for backup
+    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
+    
+    echo "Backup cron job updated. Backups will run every $backup_interval minutes."
+}
+
 install_user_usage() {
     echo "Installing user usage tracking system..."
     
@@ -299,6 +316,9 @@ install_user_usage() {
     # Start hourlyReport.py
     start_hourlyreport
     
+    # Update backup cron job
+    update_backup_cron
+    
     echo "User usage tracking system installation completed."
     echo "Report interval set to every $report_interval minutes."
 }
@@ -346,7 +366,7 @@ uninstall_user_usage() {
         echo "UserUsageAnalytics database dropped successfully."
     fi
 
-    # Remove the user_usage_installed flag from the config file
+# Remove the user_usage_installed flag from the config file
     jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
     
     # Remove usage log file
@@ -455,8 +475,11 @@ case "$1" in
             exit 1
         fi
         ;;
+    update_backup_interval)
+        update_backup_cron
+        ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]}"
+        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]|update_backup_interval}"
         exit 1
         ;;
 esac
