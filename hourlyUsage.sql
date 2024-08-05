@@ -21,23 +21,23 @@ CREATE TABLE IF NOT EXISTS UsageSnapshots (
     timestamp DATETIME NOT NULL,
     total_usage BIGINT NOT NULL,
     INDEX idx_user_timestamp (user_id, timestamp)
-);
+) ENGINE=InnoDB;
 
 -- Create table for cleanup log if it doesn't exist
 CREATE TABLE IF NOT EXISTS CleanupLog (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cleanup_time DATETIME NOT NULL
-);
+) ENGINE=InnoDB;
 
 -- Create a new table for storing periodic usage data if it doesn't exist
 CREATE TABLE IF NOT EXISTS PeriodicUsage (
-    id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    report_number INT NOT NULL,
     username VARCHAR(255) NOT NULL,
     usage_in_period BIGINT NOT NULL,
     timestamp DATETIME NOT NULL,
-    report_number INT NOT NULL,
-    INDEX idx_user_report (user_id, report_number)
+    PRIMARY KEY (user_id, report_number),
+    INDEX idx_report_number (report_number)
 ) ENGINE=InnoDB;
 
 -- Create or replace the view that links to the users table in the main database
@@ -66,18 +66,19 @@ BEGIN
     SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
     
     -- Get the timestamp of the last report
-    SELECT COALESCE(MAX(timestamp), DATE_SUB(get_tehran_time(), INTERVAL 5 MINUTE)) INTO last_report_time FROM PeriodicUsage;
+    SELECT COALESCE(MAX(timestamp), DATE_SUB(get_tehran_time(), INTERVAL 5 MINUTE)) 
+    INTO last_report_time FROM PeriodicUsage;
     
-    INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp, report_number)
+    INSERT INTO PeriodicUsage (user_id, report_number, username, usage_in_period, timestamp)
     SELECT 
         u.id AS user_id,
+        current_report_number AS report_number,
         u.username,
         CASE
             WHEN current_report_number = 1 THEN 0
             ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
         END AS usage_in_period,
-        get_tehran_time() AS timestamp,
-        current_report_number AS report_number
+        get_tehran_time() AS timestamp
     FROM 
         v_users u
     LEFT JOIN UsageSnapshots new ON u.id = new.user_id AND new.timestamp = (
@@ -89,9 +90,15 @@ BEGIN
     )
     WHERE
         new.timestamp > last_report_time OR old.timestamp IS NULL
-    ORDER BY u.id;
+    ON DUPLICATE KEY UPDATE
+        username = u.username,
+        usage_in_period = CASE
+            WHEN current_report_number = 1 THEN 0
+            ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
+        END,
+        timestamp = get_tehran_time();
 
-    -- Return the inserted data for display
+    -- Return the inserted/updated data for display
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE report_number = current_report_number
@@ -109,9 +116,6 @@ BEGIN
     DELETE FROM PeriodicUsage
     WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
     
-    -- Reset auto-increment value
-    ALTER TABLE PeriodicUsage AUTO_INCREMENT = 1;
-    
     INSERT INTO CleanupLog (cleanup_time) VALUES (p_current_time);
 END //
 DELIMITER ;
@@ -124,5 +128,20 @@ BEGIN
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
     ORDER BY user_id, report_number;
+END //
+DELIMITER ;
+
+-- Create a function to check auto_increment settings
+DELIMITER //
+CREATE OR REPLACE FUNCTION check_auto_increment_settings()
+RETURNS VARCHAR(1000)
+DETERMINISTIC
+BEGIN
+    DECLARE result VARCHAR(1000);
+    SET result = CONCAT(
+        'auto_increment_increment: ', @@auto_increment_increment, 
+        ', auto_increment_offset: ', @@auto_increment_offset
+    );
+    RETURN result;
 END //
 DELIMITER ;
