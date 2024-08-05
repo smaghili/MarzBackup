@@ -1,10 +1,9 @@
 import os
 import asyncio
 import subprocess
-import yaml
 from aiogram import Bot
 from aiogram.types import FSInputFile
-from config import load_config, ADMIN_CHAT_ID, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
+from config import load_config, ADMIN_CHAT_ID
 
 config = load_config()
 
@@ -33,10 +32,13 @@ async def create_and_send_backup(bot):
 
         os.makedirs(mysql_backup_dir, exist_ok=True)
         
+        db_container = config.get('db_container')
+        db_password = config.get('db_password')
+        
         backup_script = f"""
         #!/bin/bash
         USER="root"
-        PASSWORD="{DB_PASSWORD}"
+        PASSWORD="{db_password}"
         databases=$(mariadb -h 127.0.0.1 --user=$USER --password=$PASSWORD -e "SHOW DATABASES;" | tr -d "| " | grep -v Database)
         for db in $databases; do
             if [[ "$db" != "information_schema" ]] && [[ "$db" != "mysql" ]] && [[ "$db" != "performance_schema" ]] && [[ "$db" != "sys" ]] ; then
@@ -50,8 +52,21 @@ async def create_and_send_backup(bot):
             f.write(backup_script)
         os.chmod(f"{mysql_backup_dir}/marz-backup.sh", 0o755)
         
+        # Check if the container exists and is running
+        check_container_cmd = f"docker inspect -f '{{{{.State.Running}}}}' {db_container}"
         process = await asyncio.create_subprocess_shell(
-            f"docker exec {DB_CONTAINER} bash -c '/var/lib/mysql/db-backup/marz-backup.sh'",
+            check_container_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0 or stdout.decode().strip() != "true":
+            raise RuntimeError(f"Container {db_container} is not running or doesn't exist.")
+        
+        # Execute the backup script
+        backup_cmd = f"docker exec {db_container} bash -c '/var/lib/mysql/db-backup/marz-backup.sh'"
+        process = await asyncio.create_subprocess_shell(
+            backup_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -76,8 +91,9 @@ async def create_and_send_backup(bot):
         print(f"{system.capitalize()} backup completed and sent successfully.")
         return True
     except Exception as e:
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"An error occurred during the backup process: {str(e)}")
-        print(f"An error occurred during the backup process: {str(e)}")
+        error_message = f"An error occurred during the backup process: {str(e)}"
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=error_message)
+        print(error_message)
         return False
 
 async def main():
