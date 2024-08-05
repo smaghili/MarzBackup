@@ -18,27 +18,17 @@ DELIMITER ;
 CREATE TABLE IF NOT EXISTS UsageSnapshots (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    username VARCHAR(255) NOT NULL,
     timestamp DATETIME NOT NULL,
     total_usage BIGINT NOT NULL,
     INDEX idx_user_timestamp (user_id, timestamp)
-) ENGINE=InnoDB;
+);
 
 -- Create table for cleanup log if it doesn't exist
 CREATE TABLE IF NOT EXISTS CleanupLog (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cleanup_time DATETIME NOT NULL
-) ENGINE=InnoDB;
-
--- Create a new table for storing periodic usage data if it doesn't exist
-CREATE TABLE IF NOT EXISTS PeriodicUsage (
-    user_id INT NOT NULL,
-    report_number INT NOT NULL,
-    username VARCHAR(255) NOT NULL,
-    usage_in_period BIGINT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    PRIMARY KEY (user_id, report_number),
-    INDEX idx_report_number (report_number)
-) ENGINE=InnoDB;
+);
 
 -- Create or replace the view that links to the users table in the main database
 CREATE OR REPLACE SQL SECURITY INVOKER VIEW v_users AS
@@ -49,8 +39,8 @@ FROM marzban.users;
 DELIMITER //
 CREATE OR REPLACE PROCEDURE insert_current_usage(IN p_timestamp DATETIME)
 BEGIN
-    INSERT INTO UsageSnapshots (user_id, timestamp, total_usage)
-    SELECT id, p_timestamp, COALESCE(used_traffic, 0)
+    INSERT INTO UsageSnapshots (user_id, username, timestamp, total_usage)
+    SELECT id, username, p_timestamp, COALESCE(used_traffic, 0)
     FROM v_users;
 END //
 DELIMITER ;
@@ -59,25 +49,17 @@ DELIMITER ;
 DELIMITER //
 CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
-    DECLARE current_report_number INT;
     DECLARE last_report_time DATETIME;
-    
-    -- Get the current report number
-    SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
     
     -- Get the timestamp of the last report
     SELECT COALESCE(MAX(timestamp), DATE_SUB(get_tehran_time(), INTERVAL 5 MINUTE)) 
-    INTO last_report_time FROM PeriodicUsage;
+    INTO last_report_time FROM UsageSnapshots;
     
-    INSERT INTO PeriodicUsage (user_id, report_number, username, usage_in_period, timestamp)
+    -- Calculate and return the usage data
     SELECT 
         u.id AS user_id,
-        current_report_number AS report_number,
         u.username,
-        CASE
-            WHEN current_report_number = 1 THEN 0
-            ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
-        END AS usage_in_period,
+        COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0) AS usage_in_period,
         get_tehran_time() AS timestamp
     FROM 
         v_users u
@@ -90,19 +72,7 @@ BEGIN
     )
     WHERE
         new.timestamp > last_report_time OR old.timestamp IS NULL
-    ON DUPLICATE KEY UPDATE
-        username = u.username,
-        usage_in_period = CASE
-            WHEN current_report_number = 1 THEN 0
-            ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
-        END,
-        timestamp = get_tehran_time();
-
-    -- Return the inserted/updated data for display
-    SELECT user_id, username, usage_in_period, timestamp, report_number
-    FROM PeriodicUsage
-    WHERE report_number = current_report_number
-    ORDER BY user_id, report_number;
+    ORDER BY u.id;
 END //
 DELIMITER ;
 
@@ -113,9 +83,6 @@ BEGIN
     DELETE FROM UsageSnapshots
     WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
     
-    DELETE FROM PeriodicUsage
-    WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
-    
     INSERT INTO CleanupLog (cleanup_time) VALUES (p_current_time);
 END //
 DELIMITER ;
@@ -124,24 +91,23 @@ DELIMITER ;
 DELIMITER //
 CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
 BEGIN
-    SELECT user_id, username, usage_in_period, timestamp, report_number
-    FROM PeriodicUsage
-    WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY user_id, report_number;
-END //
-DELIMITER ;
-
--- Create a function to check auto_increment settings
-DELIMITER //
-CREATE OR REPLACE FUNCTION check_auto_increment_settings()
-RETURNS VARCHAR(1000)
-DETERMINISTIC
-BEGIN
-    DECLARE result VARCHAR(1000);
-    SET result = CONCAT(
-        'auto_increment_increment: ', @@auto_increment_increment, 
-        ', auto_increment_offset: ', @@auto_increment_offset
-    );
-    RETURN result;
+    SELECT 
+        s1.user_id,
+        s1.username,
+        s1.total_usage - COALESCE(s2.total_usage, 0) AS usage_in_period,
+        s1.timestamp
+    FROM 
+        UsageSnapshots s1
+    LEFT JOIN UsageSnapshots s2 ON 
+        s1.user_id = s2.user_id AND 
+        s2.timestamp = (
+            SELECT MAX(timestamp) 
+            FROM UsageSnapshots 
+            WHERE user_id = s1.user_id AND timestamp < s1.timestamp
+        )
+    WHERE 
+        s1.timestamp BETWEEN p_start_time AND p_end_time
+    ORDER BY 
+        s1.user_id, s1.timestamp;
 END //
 DELIMITER ;
