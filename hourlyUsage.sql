@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS PeriodicUsage (
     timestamp DATETIME NOT NULL,
     report_number INT NOT NULL,
     INDEX idx_user_report (user_id, report_number)
-);
+) ENGINE=InnoDB;
 
 -- Create or replace the view that links to the users table in the main database
 CREATE OR REPLACE SQL SECURITY INVOKER VIEW v_users AS
