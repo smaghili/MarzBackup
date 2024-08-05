@@ -32,11 +32,10 @@ def execute_sql(sql_command):
         return None
 
 def insert_usage_data():
-    tehran_time = datetime.now(tehran_tz)
-    sql = f"CALL insert_current_usage('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}');"
+    sql = "CALL insert_current_usage();"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Inserted usage snapshot at {tehran_time}")
+        print(f"Inserted usage snapshot at {datetime.now(tehran_tz)}")
     else:
         print("Failed to insert usage snapshot")
 
@@ -49,15 +48,14 @@ def calculate_and_display_usage():
         print("Failed to calculate usage")
 
 def cleanup_old_data():
-    tehran_time = datetime.now(tehran_tz)
-    sql = f"""
-    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}', INTERVAL 1 YEAR);
-    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}', INTERVAL 1 YEAR);
-    INSERT INTO CleanupLog (cleanup_time) VALUES ('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}');
+    sql = """
+    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
+    INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
     """
     result = execute_sql(sql)
     if result is not None:
-        print(f"Cleaned up data older than one year at {tehran_time}")
+        print(f"Cleaned up data older than one year at {datetime.now(tehran_tz)}")
     else:
         print("Failed to clean up old data")
 
@@ -69,7 +67,8 @@ def should_run_cleanup():
         if result.lower() == 'null' or result == '':
             return True  # If no cleanup has been done, we should run it
         try:
-            last_cleanup = tehran_tz.localize(datetime.strptime(result, '%Y-%m-%d %H:%M:%S'))
+            last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+            last_cleanup = tehran_tz.localize(last_cleanup)
             return (datetime.now(tehran_tz) - last_cleanup).days >= 365  # Run cleanup annually
         except ValueError:
             print(f"Unexpected date format: {result}")
