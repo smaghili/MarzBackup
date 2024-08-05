@@ -31,20 +31,29 @@ keyboard = types.ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+# Create a lock for backup process
+backup_in_progress = asyncio.Lock()
+
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
     await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
 
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
-    try:
-        success = await create_and_send_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
-        else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
-    except Exception as e:
-        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+    if backup_in_progress.locked():
+        await message.answer("یک فرآیند پشتیبان‌گیری در حال انجام است. لطفاً صبر کنید.")
+        return
+
+    async with backup_in_progress:
+        await message.answer("در حال تهیه پشتیبان... لطفاً صبر کنید.")
+        try:
+            success = await create_and_send_backup(message.bot)
+            if success:
+                await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+            else:
+                await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
+        except Exception as e:
+            await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
 @router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
@@ -72,13 +81,6 @@ async def process_schedule(message: types.Message, state: FSMContext):
         
         if process.returncode == 0:
             await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
-            
-            # Perform an immediate backup
-            success = await create_and_send_backup(message.bot)
-            if success:
-                await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
-            else:
-                await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
         else:
             await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
