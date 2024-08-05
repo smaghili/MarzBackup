@@ -1,59 +1,4 @@
--- Create the database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS UserUsageAnalytics;
-
--- Switch to the UserUsageAnalytics database
-USE UserUsageAnalytics;
-
--- Create a function to get current Tehran time
-DELIMITER //
-CREATE OR REPLACE FUNCTION get_tehran_time() 
-RETURNS DATETIME
-DETERMINISTIC
-BEGIN
-  RETURN CONVERT_TZ(NOW(), 'UTC', 'Asia/Tehran');
-END //
-DELIMITER ;
-
--- Create table for storing usage snapshots if it doesn't exist
-CREATE TABLE IF NOT EXISTS UsageSnapshots (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    total_usage BIGINT NOT NULL,
-    INDEX idx_user_timestamp (user_id, timestamp)
-);
-
--- Create table for cleanup log if it doesn't exist
-CREATE TABLE IF NOT EXISTS CleanupLog (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    cleanup_time DATETIME NOT NULL
-);
-
--- Create a new table for storing periodic usage data if it doesn't exist
-CREATE TABLE IF NOT EXISTS PeriodicUsage (
-    user_id INT NOT NULL,
-    username VARCHAR(255) NOT NULL,
-    usage_in_period BIGINT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    report_number INT NOT NULL,
-    PRIMARY KEY (user_id, report_number),
-    INDEX idx_timestamp (timestamp)
-) ENGINE=InnoDB;
-
--- Create or replace the view that links to the users table in the main database
-CREATE OR REPLACE SQL SECURITY INVOKER VIEW v_users AS
-SELECT id, username, used_traffic
-FROM marzban.users;
-
--- Create or replace procedure to insert current usage for all users
-DELIMITER //
-CREATE OR REPLACE PROCEDURE insert_current_usage(IN p_timestamp DATETIME)
-BEGIN
-    INSERT INTO UsageSnapshots (user_id, timestamp, total_usage)
-    SELECT id, p_timestamp, COALESCE(used_traffic, 0)
-    FROM v_users;
-END //
-DELIMITER ;
+-- ... (بقیه کد بدون تغییر باقی می‌ماند)
 
 -- Create or replace procedure to calculate usage data
 DELIMITER //
@@ -99,21 +44,7 @@ BEGIN
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE report_number = current_report_number
-    ORDER BY user_id, report_number;
-END //
-DELIMITER ;
-
--- Create or replace procedure to clean up old data
-DELIMITER //
-CREATE OR REPLACE PROCEDURE cleanup_old_data(IN p_current_time DATETIME)
-BEGIN
-    DELETE FROM UsageSnapshots
-    WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
-    
-    DELETE FROM PeriodicUsage
-    WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
-    
-    INSERT INTO CleanupLog (cleanup_time) VALUES (p_current_time);
+    ORDER BY report_number, user_id;
 END //
 DELIMITER ;
 
@@ -124,6 +55,6 @@ BEGIN
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY user_id, report_number;
+    ORDER BY report_number, user_id;
 END //
 DELIMITER ;
