@@ -7,6 +7,7 @@ import os
 
 CONFIG_FILE_PATH = "/opt/marzbackup/config.json"
 SQL_FILE_PATH = "/opt/MarzBackup/hourlyUsage.sql"  # Path to hourlyUsage.sql
+TEMP_SQL_FILE_PATH = "/tmp/temp_hourlyUsage.sql"  # Path to temporary SQL file
 
 def load_config():
     with open(CONFIG_FILE_PATH, 'r') as file:
@@ -35,6 +36,16 @@ def execute_sql(sql_command):
         print(f"SQL command that failed: {sql_command}")
         return None
 
+def execute_sql_file(sql_file_path):
+    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} UserUsageAnalytics < {sql_file_path}"
+    try:
+        result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+        print(f"Error output: {e.stderr}")
+        return None
+
 def update_database_structure():
     if not os.path.exists(SQL_FILE_PATH):
         print(f"SQL file not found: {SQL_FILE_PATH}")
@@ -43,16 +54,16 @@ def update_database_structure():
     with open(SQL_FILE_PATH, 'r') as sql_file:
         sql_content = sql_file.read()
 
-    sql_statements = sql_content.split(';')
+    with open(TEMP_SQL_FILE_PATH, 'w') as temp_sql_file:
+        temp_sql_file.write(sql_content)
 
-    for statement in sql_statements:
-        if statement.strip():
-            result = execute_sql(statement.strip() + ';')
-            if result is None:
-                print("Failed to execute SQL statement")
-                return False
-    print("Successfully updated database structure")
-    return True
+    result = execute_sql_file(TEMP_SQL_FILE_PATH)
+    if result is None:
+        print("Failed to update database structure")
+        return False
+    else:
+        print("Successfully updated database structure")
+        return True
 
 def insert_usage_data():
     now = datetime.now(tehran_tz)
