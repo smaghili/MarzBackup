@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
-from backup import handle_backup, create_and_send_backup
+from backup import create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -38,7 +38,7 @@ async def send_welcome(message: types.Message):
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
     try:
-        success = await handle_backup(message.bot)
+        success = await create_and_send_backup(message.bot)
         if success:
             await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
         else:
@@ -60,18 +60,27 @@ async def process_schedule(message: types.Message, state: FSMContext):
         
         config = load_config()
         config["backup_interval_minutes"] = minutes
-        config["interval_change_time"] = asyncio.get_event_loop().time()
         save_config(config)
         
-        await state.clear()
-        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        # Run the update_backup_cron command
+        process = await asyncio.create_subprocess_shell(
+            "marzbackup update_backup_interval",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         
-        # Perform an immediate backup
-        success = await create_and_send_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
+        if process.returncode == 0:
+            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+            
+            # Perform an immediate backup
+            success = await create_and_send_backup(message.bot)
+            if success:
+                await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
+            else:
+                await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
+            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
@@ -108,16 +117,16 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         await message.bot.download_file(file.file_path, file_path)
 
         # Extract database information from config
-        container_name = config.get("db_container")
+        db_container = config.get("db_container")
         db_password = config.get("db_password")
         db_name = config.get("db_name")
 
-        if not container_name or not db_password or not db_name:
+        if not db_container or not db_password or not db_name:
             await message.answer("اطلاعات پایگاه داده در فایل کانفیگ یافت نشد.")
             return
 
         # Restore the database
-        restore_command = f"docker exec -i {container_name} mariadb -u root -p{db_password} {db_name} < {file_path}"
+        restore_command = f"docker exec -i {db_container} mariadb -u root -p{db_password} {db_name} < {file_path}"
         process = await asyncio.create_subprocess_shell(
             restore_command,
             stdout=asyncio.subprocess.PIPE,
@@ -152,11 +161,17 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         save_config(config)
         
         # Restart hourlyReport.py
-        subprocess.run(["marzbackup", "stop", "user-usage"])
-        subprocess.run(["marzbackup", "install", "user-usage"])
+        process = await asyncio.create_subprocess_shell(
+            "marzbackup restart user-usage",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         
-        await state.clear()
-        await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
+        if process.returncode == 0:
+            await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
+        else:
+            await message.answer(f"خطا در تنظیم زمان گزارش: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
     finally:
