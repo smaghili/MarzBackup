@@ -40,20 +40,20 @@ async def send_welcome(message: types.Message):
 
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
-    if backup_in_progress.locked():
-        await message.answer("یک فرآیند پشتیبان‌گیری در حال انجام است. لطفاً صبر کنید.")
-        return
-
-    async with backup_in_progress:
-        await message.answer("در حال تهیه پشتیبان... لطفاً صبر کنید.")
-        try:
-            success = await create_and_send_backup(message.bot)
-            if success:
-                await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
-            else:
-                await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
-        except Exception as e:
-            await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+    await message.answer("در حال تهیه پشتیبان... لطفاً صبر کنید.")
+    try:
+        process = await asyncio.create_subprocess_shell(
+            "/usr/bin/python3 /opt/MarzBackup/backup.py",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+        else:
+            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {stderr.decode()}")
+    except Exception as e:
+        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
 @router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
