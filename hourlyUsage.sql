@@ -80,4 +80,30 @@ BEGIN
 END //
 DELIMITER ;
 
--- The rest of the procedures remain the same
+-- Create procedure to clean up old data
+DELIMITER //
+CREATE OR REPLACE PROCEDURE cleanup_old_data(IN p_current_time DATETIME)
+BEGIN
+    DELETE FROM UsageSnapshots
+    WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
+    
+    DELETE FROM PeriodicUsage
+    WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
+    
+    -- Reset auto-increment value
+    ALTER TABLE PeriodicUsage AUTO_INCREMENT = 1;
+    
+    INSERT INTO CleanupLog (cleanup_time) VALUES (p_current_time);
+END //
+DELIMITER ;
+
+-- Create procedure to retrieve historical usage data
+DELIMITER //
+CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
+BEGIN
+    SELECT user_id, username, usage_in_period, timestamp, report_number
+    FROM PeriodicUsage
+    WHERE timestamp BETWEEN p_start_time AND p_end_time
+    ORDER BY user_id, report_number;
+END //
+DELIMITER ;

@@ -32,10 +32,11 @@ def execute_sql(sql_command):
         return None
 
 def insert_usage_data():
-    sql = "CALL insert_current_usage();"
+    now = datetime.now(tehran_tz)
+    sql = f"CALL insert_current_usage('{now.strftime('%Y-%m-%d %H:%M:%S')}');"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Inserted usage snapshot at {datetime.now(tehran_tz)}")
+        print(f"Inserted usage snapshot at {now}")
     else:
         print("Failed to insert usage snapshot")
 
@@ -48,14 +49,13 @@ def calculate_and_display_usage():
         print("Failed to calculate usage")
 
 def cleanup_old_data():
-    sql = """
-    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
+    now = datetime.now(tehran_tz)
+    sql = f"""
+    CALL cleanup_old_data('{now.strftime('%Y-%m-%d %H:%M:%S')}');
     """
     result = execute_sql(sql)
     if result is not None:
-        print(f"Cleaned up data older than one year at {datetime.now(tehran_tz)}")
+        print(f"Cleaned up data older than one year at {now}")
     else:
         print("Failed to clean up old data")
 
@@ -83,11 +83,12 @@ def is_within_schedule():
     return now - rounded_time < timedelta(minutes=1)
 
 def run_tasks():
+    now = datetime.now(tehran_tz)
     if not is_within_schedule():
-        print(f"Current time {datetime.now(tehran_tz)} is outside the scheduled execution window. Skipping execution.")
+        print(f"Current time {now} is outside the scheduled execution window. Skipping execution.")
         return
 
-    print(f"Running tasks at {datetime.now(tehran_tz)}")
+    print(f"Running tasks at {now}")
     insert_usage_data()
     calculate_and_display_usage()
     if should_run_cleanup():
