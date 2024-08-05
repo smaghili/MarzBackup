@@ -116,7 +116,7 @@ start() {
             echo "Failed to start the bot. PID file not created."
             cat "$LOG_FILE"
         fi
-    else
+        else
         echo "MarzBackup is not installed. Please install it first."
         exit 1
     fi
@@ -182,44 +182,6 @@ convert_to_cron() {
     fi
 }
 
-check_hourlyreport_running() {
-    if [ -f "$LOCK_FILE" ]; then
-        PID=$(cat "$LOCK_FILE")
-        if ps -p $PID > /dev/null; then
-            return 0  # Process is running
-        else
-            rm -f "$LOCK_FILE"  # Remove stale lock file
-        fi
-    fi
-    return 1  # Process is not running
-}
-
-start_hourlyreport() {
-    if check_hourlyreport_running; then
-        echo "hourlyReport.py is already running. Cannot start a new instance."
-        return 1
-    fi
-
-    echo $$ > "$LOCK_FILE"
-    nohup python3 /opt/MarzBackup/hourlyReport.py >> "$USAGE_LOG_FILE" 2>&1 &
-    echo "hourlyReport.py started with PID: $!"
-    return 0
-}
-
-stop_user_usage_processes() {
-    echo "Stopping hourlyReport.py process..."
-    pkill -f "python3 /opt/MarzBackup/hourlyReport.py"
-    pkill -f "/opt/MarzBackup/hourlyReport.py"
-    if [ -f "$LOCK_FILE" ]; then
-        PID=$(cat "$LOCK_FILE")
-        kill $PID
-        rm -f "$LOCK_FILE"
-        echo "hourlyReport.py process (PID: $PID) has been stopped."
-    else
-        echo "No running hourlyReport.py process found."
-    fi
-}
-
 update_backup_cron() {
     local backup_interval=$(jq -r '.backup_interval_minutes // 60' "$CONFIG_FILE")
     local cron_schedule=$(convert_to_cron $backup_interval)
@@ -231,8 +193,8 @@ update_backup_cron() {
     # Remove existing crontab entry for backup
     (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/backup.py") | crontab -
     
-    # Install new crontab for backup
-    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
+    # Install new crontab for backup with flock to ensure only one instance runs
+    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
     
     echo "Backup cron job updated. Backups will run every $backup_interval minutes."
 }
@@ -321,101 +283,6 @@ install_user_usage() {
     
     echo "User usage tracking system installation completed."
     echo "Report interval set to every $report_interval minutes."
-}
-
-uninstall_user_usage() {
-    echo "Uninstalling user usage tracking system..."
-    
-    # Stop hourlyReport.py process
-    stop_user_usage_processes
-    
-    # Remove crontab entry specifically for MarzBackup
-    crontab -l | grep -v "/opt/MarzBackup/hourlyReport.py" | crontab -
-    
-    # Verify crontab removal
-    if crontab -l | grep -q "/opt/MarzBackup/hourlyReport.py"; then
-        echo "Warning: Failed to remove crontab entry. Please check manually."
-    else
-        echo "Crontab entry for MarzBackup successfully removed."
-    fi
-    
-    # Load configuration
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Config file not found at $CONFIG_FILE"
-        exit 1
-    fi
-    
-    config=$(cat "$CONFIG_FILE")
-    db_container=$(echo $config | jq -r '.db_container')
-    db_password=$(echo $config | jq -r '.db_password')
-    db_type=$(echo $config | jq -r '.db_type')
-
-    # Validate database information
-    if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_type" ]; then
-        echo "Error: Missing database configuration. Please check your config.json file."
-        exit 1
-    fi
-
-    # Drop the UserUsageAnalytics database
-    echo "Dropping UserUsageAnalytics database..."
-    docker exec -i "$db_container" "$db_type" -u root -p"$db_password" -e "DROP DATABASE IF EXISTS UserUsageAnalytics;"
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to drop the UserUsageAnalytics database. Please check your database credentials and permissions."
-        exit 1
-    else
-        echo "UserUsageAnalytics database dropped successfully."
-    fi
-
-# Remove the user_usage_installed flag from the config file
-    jq 'del(.user_usage_installed)' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
-    
-    # Remove usage log file
-    sudo rm -f "$USAGE_LOG_FILE"
-    
-    echo "User usage tracking system has been uninstalled."
-}
-
-start_user_usage() {
-    echo "Starting user usage tracking system..."
-    if start_hourlyreport; then
-        echo "User usage tracking system started successfully."
-    else
-        echo "Failed to start user usage tracking system."
-    fi
-}
-
-stop_user_usage() {
-    echo "Stopping user usage tracking system..."
-    stop_user_usage_processes
-    echo "User usage tracking system stopped."
-}
-
-uninstall_marzbackup() {
-    echo "WARNING: This will completely remove MarzBackup, including all settings and data."
-    echo "Are you sure you want to proceed? (y/N)"
-    read -r response
-    if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
-        echo "Proceeding with uninstallation..."
-
-        # Stop MarzBackup
-        stop
-
-        # Uninstall user usage tracking system
-        uninstall_user_usage
-
-        # Remove MarzBackup files and directories
-        sudo rm -rf "$INSTALL_DIR"
-        sudo rm -rf "$CONFIG_DIR"
-        sudo rm -f "$LOG_FILE"
-        sudo rm -f "$USAGE_LOG_FILE"
-        sudo rm -f "$PID_FILE"
-        sudo rm -f "$SCRIPT_PATH"
-        sudo rm -f "$LOCK_FILE"
-        
-        echo "MarzBackup has been completely uninstalled."
-    else
-        echo "Uninstallation cancelled."
-    fi
 }
 
 case "$1" in
