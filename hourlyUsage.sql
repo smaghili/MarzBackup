@@ -29,14 +29,16 @@ CREATE TABLE IF NOT EXISTS CleanupLog (
     cleanup_time DATETIME NOT NULL
 );
 
--- Create a new table for storing periodic usage data if it doesn't exist
-CREATE TABLE IF NOT EXISTS PeriodicUsage (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+-- Modify the PeriodicUsage table
+DROP TABLE IF EXISTS PeriodicUsage;
+CREATE TABLE PeriodicUsage (
+    id INT NOT NULL,
     user_id INT NOT NULL,
     username VARCHAR(255) NOT NULL,
     usage_in_period BIGINT NOT NULL,
     timestamp DATETIME NOT NULL,
     report_number INT NOT NULL,
+    PRIMARY KEY (id),
     INDEX idx_user_report (user_id, report_number)
 );
 
@@ -61,6 +63,7 @@ CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
     DECLARE current_report_number INT;
     DECLARE last_report_time DATETIME;
+    DECLARE last_id INT;
     
     -- Get the current report number
     SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
@@ -68,8 +71,12 @@ BEGIN
     -- Get the timestamp of the last report
     SELECT COALESCE(MAX(timestamp), DATE_SUB(get_tehran_time(), INTERVAL 5 MINUTE)) INTO last_report_time FROM PeriodicUsage;
     
-    INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp, report_number)
+    -- Get the last id
+    SELECT COALESCE(MAX(id), 0) INTO last_id FROM PeriodicUsage;
+    
+    INSERT INTO PeriodicUsage (id, user_id, username, usage_in_period, timestamp, report_number)
     SELECT 
+        last_id + ROW_NUMBER() OVER (ORDER BY u.id) AS id,
         u.id AS user_id,
         u.username,
         CASE
@@ -92,10 +99,10 @@ BEGIN
     ORDER BY u.id;
 
     -- Return the inserted data for display
-    SELECT user_id, username, usage_in_period, timestamp, report_number
+    SELECT id, user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE report_number = current_report_number
-    ORDER BY user_id, report_number;
+    ORDER BY id;
 END //
 DELIMITER ;
 
@@ -109,9 +116,6 @@ BEGIN
     DELETE FROM PeriodicUsage
     WHERE timestamp < DATE_SUB(p_current_time, INTERVAL 1 YEAR);
     
-    -- Reset auto-increment value
-    ALTER TABLE PeriodicUsage AUTO_INCREMENT = 1;
-    
     INSERT INTO CleanupLog (cleanup_time) VALUES (p_current_time);
 END //
 DELIMITER ;
@@ -120,9 +124,9 @@ DELIMITER ;
 DELIMITER //
 CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
 BEGIN
-    SELECT user_id, username, usage_in_period, timestamp, report_number
+    SELECT id, user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY user_id, report_number;
+    ORDER BY id, report_number;
 END //
 DELIMITER ;
