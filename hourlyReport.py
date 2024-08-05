@@ -25,7 +25,7 @@ if not all([DB_CONTAINER, DB_PASSWORD]):
 tehran_tz = pytz.timezone('Asia/Tehran')
 
 def execute_sql(sql_command):
-    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} UserUsageAnalytics -e '{sql_command}'"
+    full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} UserUsageAnalytics -e \"{sql_command}\""
     try:
         result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout
@@ -43,13 +43,16 @@ def update_database_structure():
     with open(SQL_FILE_PATH, 'r') as sql_file:
         sql_content = sql_file.read()
 
-    result = execute_sql(sql_content)
-    if result is None:
-        print("Failed to update database structure")
-        return False
-    else:
-        print("Successfully updated database structure")
-        return True
+    sql_statements = sql_content.split(';')
+
+    for statement in sql_statements:
+        if statement.strip():
+            result = execute_sql(statement.strip() + ';')
+            if result is None:
+                print("Failed to execute SQL statement")
+                return False
+    print("Successfully updated database structure")
+    return True
 
 def insert_usage_data():
     now = datetime.now(tehran_tz)
