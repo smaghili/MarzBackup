@@ -2,8 +2,11 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import pytz
+import traceback
+import os
 
 CONFIG_FILE_PATH = "/opt/marzbackup/config.json"
+SQL_FILE_PATH = "/opt/MarzBackup/hourlyUsage.sql"  # Path to hourlyUsage.sql
 
 def load_config():
     with open(CONFIG_FILE_PATH, 'r') as file:
@@ -29,7 +32,24 @@ def execute_sql(sql_command):
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
         print(f"Error output: {e.stderr}")
+        print(f"SQL command that failed: {sql_command}")
         return None
+
+def update_database_structure():
+    if not os.path.exists(SQL_FILE_PATH):
+        print(f"SQL file not found: {SQL_FILE_PATH}")
+        return False
+
+    with open(SQL_FILE_PATH, 'r') as sql_file:
+        sql_content = sql_file.read()
+
+    result = execute_sql(sql_content)
+    if result is None:
+        print("Failed to update database structure")
+        return False
+    else:
+        print("Successfully updated database structure")
+        return True
 
 def insert_usage_data():
     now = datetime.now(tehran_tz)
@@ -50,9 +70,7 @@ def calculate_and_display_usage():
 
 def cleanup_old_data():
     now = datetime.now(tehran_tz)
-    sql = f"""
-    CALL cleanup_old_data('{now.strftime('%Y-%m-%d %H:%M:%S')}');
-    """
+    sql = f"CALL cleanup_old_data('{now.strftime('%Y-%m-%d %H:%M:%S')}');"
     result = execute_sql(sql)
     if result is not None:
         print(f"Cleaned up data older than one year at {now}")
@@ -89,10 +107,17 @@ def run_tasks():
         return
 
     print(f"Running tasks at {now}")
-    insert_usage_data()
-    calculate_and_display_usage()
-    if should_run_cleanup():
-        cleanup_old_data()
+    try:
+        if update_database_structure():
+            insert_usage_data()
+            calculate_and_display_usage()
+            if should_run_cleanup():
+                cleanup_old_data()
+        else:
+            print("Skipping tasks due to database structure update failure")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        print(traceback.format_exc())
 
 if __name__ == "__main__":
     run_tasks()

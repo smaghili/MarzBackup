@@ -1,8 +1,10 @@
 -- Create the database if it doesn't exist
 CREATE DATABASE IF NOT EXISTS UserUsageAnalytics;
+
+-- Switch to the UserUsageAnalytics database
 USE UserUsageAnalytics;
 
--- Create table for storing usage snapshots
+-- Create table for storing usage snapshots if it doesn't exist
 CREATE TABLE IF NOT EXISTS UsageSnapshots (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -11,13 +13,13 @@ CREATE TABLE IF NOT EXISTS UsageSnapshots (
     INDEX idx_user_timestamp (user_id, timestamp)
 );
 
--- Create table for cleanup log
+-- Create table for cleanup log if it doesn't exist
 CREATE TABLE IF NOT EXISTS CleanupLog (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cleanup_time DATETIME NOT NULL
 );
 
--- Create a new table for storing periodic usage data
+-- Create a new table for storing periodic usage data if it doesn't exist
 CREATE TABLE IF NOT EXISTS PeriodicUsage (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -28,12 +30,12 @@ CREATE TABLE IF NOT EXISTS PeriodicUsage (
     INDEX idx_user_report (user_id, report_number)
 );
 
--- Create a view that links to the users table in the main database
+-- Create or replace the view that links to the users table in the main database
 CREATE OR REPLACE SQL SECURITY INVOKER VIEW v_users AS
 SELECT id, username, used_traffic
 FROM marzban.users;
 
--- Create procedure to insert current usage for all users
+-- Create or replace procedure to insert current usage for all users
 DELIMITER //
 CREATE OR REPLACE PROCEDURE insert_current_usage(IN p_timestamp DATETIME)
 BEGIN
@@ -43,7 +45,7 @@ BEGIN
 END //
 DELIMITER ;
 
--- Create procedure to calculate usage data
+-- Create or replace procedure to calculate usage data
 DELIMITER //
 CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
@@ -56,7 +58,7 @@ BEGIN
     SELECT 
         u.id AS user_id,
         u.username,
-        COALESCE(new.total_usage - old.total_usage, 0) AS usage_in_period,
+        COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0) AS usage_in_period,
         new.timestamp AS timestamp,
         current_report_number AS report_number
     FROM 
@@ -80,7 +82,7 @@ BEGIN
 END //
 DELIMITER ;
 
--- Create procedure to clean up old data
+-- Create or replace procedure to clean up old data
 DELIMITER //
 CREATE OR REPLACE PROCEDURE cleanup_old_data(IN p_current_time DATETIME)
 BEGIN
@@ -97,7 +99,7 @@ BEGIN
 END //
 DELIMITER ;
 
--- Create procedure to retrieve historical usage data
+-- Create or replace procedure to retrieve historical usage data
 DELIMITER //
 CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
 BEGIN
