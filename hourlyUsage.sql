@@ -50,35 +50,42 @@ DELIMITER //
 CREATE OR REPLACE PROCEDURE calculate_usage()
 BEGIN
     DECLARE current_report_number INT;
+    DECLARE last_report_time DATETIME;
     
     -- Get the current report number
     SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
+    
+    -- Get the timestamp of the last report
+    SELECT COALESCE(MAX(timestamp), DATE_SUB(NOW(), INTERVAL 5 MINUTE)) INTO last_report_time FROM PeriodicUsage;
     
     INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp, report_number)
     SELECT 
         u.id AS user_id,
         u.username,
-        COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0) AS usage_in_period,
-        new.timestamp AS timestamp,
+        CASE
+            WHEN current_report_number = 1 THEN 0
+            ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
+        END AS usage_in_period,
+        NOW() AS timestamp,
         current_report_number AS report_number
     FROM 
         v_users u
     LEFT JOIN UsageSnapshots new ON u.id = new.user_id AND new.timestamp = (
-        SELECT MAX(timestamp) FROM UsageSnapshots WHERE user_id = u.id
+        SELECT MAX(timestamp) FROM UsageSnapshots WHERE user_id = u.id AND timestamp <= NOW()
     )
     LEFT JOIN UsageSnapshots old ON u.id = old.user_id AND old.timestamp = (
         SELECT MAX(timestamp) FROM UsageSnapshots 
-        WHERE user_id = u.id AND timestamp < new.timestamp
+        WHERE user_id = u.id AND timestamp <= last_report_time
     )
     WHERE
-        new.timestamp > (SELECT COALESCE(MAX(timestamp), '1970-01-01') FROM PeriodicUsage)
+        new.timestamp > last_report_time OR old.timestamp IS NULL
     ORDER BY u.id;
 
     -- Return the inserted data for display
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE report_number = current_report_number
-    ORDER BY user_id;
+    ORDER BY user_id, report_number;
 END //
 DELIMITER ;
 
