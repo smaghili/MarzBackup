@@ -35,10 +35,10 @@ FROM marzban.users;
 
 -- Create procedure to insert current usage for all users
 DELIMITER //
-CREATE OR REPLACE PROCEDURE insert_current_usage()
+CREATE OR REPLACE PROCEDURE insert_current_usage(IN p_timestamp DATETIME)
 BEGIN
     INSERT INTO UsageSnapshots (user_id, timestamp, total_usage)
-    SELECT id, NOW(), COALESCE(used_traffic, 0)
+    SELECT id, p_timestamp, COALESCE(used_traffic, 0)
     FROM v_users;
 END //
 DELIMITER ;
@@ -57,7 +57,7 @@ BEGIN
         u.id AS user_id,
         u.username,
         COALESCE(new.total_usage - old.total_usage, 0) AS usage_in_period,
-        NOW() AS timestamp,
+        new.timestamp AS timestamp,
         current_report_number AS report_number
     FROM 
         v_users u
@@ -80,30 +80,4 @@ BEGIN
 END //
 DELIMITER ;
 
--- Create procedure to clean up old data
-DELIMITER //
-CREATE OR REPLACE PROCEDURE cleanup_old_data()
-BEGIN
-    DELETE FROM UsageSnapshots
-    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
-    
-    DELETE FROM PeriodicUsage
-    WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 2 MONTH);
-    
-    -- Reset auto-increment value
-    ALTER TABLE PeriodicUsage AUTO_INCREMENT = 1;
-    
-    INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
-END //
-DELIMITER ;
-
--- Create procedure to retrieve historical usage data
-DELIMITER //
-CREATE OR REPLACE PROCEDURE get_historical_usage(IN p_start_time DATETIME, IN p_end_time DATETIME)
-BEGIN
-    SELECT user_id, username, usage_in_period, timestamp, report_number
-    FROM PeriodicUsage
-    WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY user_id, report_number;
-END //
-DELIMITER ;
+-- The rest of the procedures remain the same

@@ -1,6 +1,7 @@
 import subprocess
 import json
 from datetime import datetime, timedelta
+import pytz
 
 CONFIG_FILE_PATH = "/opt/marzbackup/config.json"
 
@@ -17,6 +18,9 @@ REPORT_INTERVAL = config.get('report_interval', 60)  # Default to 60 minutes if 
 if not all([DB_CONTAINER, DB_PASSWORD]):
     raise ValueError("Missing database configuration in config file")
 
+# Set Tehran timezone
+tehran_tz = pytz.timezone('Asia/Tehran')
+
 def execute_sql(sql_command):
     full_command = f"docker exec -i {DB_CONTAINER} mariadb -u root -p{DB_PASSWORD} UserUsageAnalytics -e '{sql_command}'"
     try:
@@ -28,10 +32,11 @@ def execute_sql(sql_command):
         return None
 
 def insert_usage_data():
-    sql = "CALL insert_current_usage();"
+    tehran_time = datetime.now(tehran_tz)
+    sql = f"CALL insert_current_usage('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}');"
     result = execute_sql(sql)
     if result is not None:
-        print(f"Inserted usage snapshot at {datetime.now()}")
+        print(f"Inserted usage snapshot at {tehran_time}")
     else:
         print("Failed to insert usage snapshot")
 
@@ -44,14 +49,15 @@ def calculate_and_display_usage():
         print("Failed to calculate usage")
 
 def cleanup_old_data():
-    sql = """
-    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB(CURDATE(), INTERVAL 1 YEAR);
-    INSERT INTO CleanupLog (cleanup_time) VALUES (NOW());
+    tehran_time = datetime.now(tehran_tz)
+    sql = f"""
+    DELETE FROM UsageSnapshots WHERE timestamp < DATE_SUB('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}', INTERVAL 1 YEAR);
+    DELETE FROM PeriodicUsage WHERE timestamp < DATE_SUB('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}', INTERVAL 1 YEAR);
+    INSERT INTO CleanupLog (cleanup_time) VALUES ('{tehran_time.strftime('%Y-%m-%d %H:%M:%S')}');
     """
     result = execute_sql(sql)
     if result is not None:
-        print(f"Cleaned up data older than one year at {datetime.now()}")
+        print(f"Cleaned up data older than one year at {tehran_time}")
     else:
         print("Failed to clean up old data")
 
@@ -63,15 +69,15 @@ def should_run_cleanup():
         if result.lower() == 'null' or result == '':
             return True  # If no cleanup has been done, we should run it
         try:
-            last_cleanup = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-            return (datetime.now() - last_cleanup).days >= 365  # Run cleanup annually
+            last_cleanup = tehran_tz.localize(datetime.strptime(result, '%Y-%m-%d %H:%M:%S'))
+            return (datetime.now(tehran_tz) - last_cleanup).days >= 365  # Run cleanup annually
         except ValueError:
             print(f"Unexpected date format: {result}")
             return False
     return False
 
 def is_within_schedule():
-    now = datetime.now()
+    now = datetime.now(tehran_tz)
     rounded_time = now.replace(minute=0, second=0, microsecond=0)
     if REPORT_INTERVAL < 60:
         rounded_time = now.replace(minute=(now.minute // REPORT_INTERVAL) * REPORT_INTERVAL, second=0, microsecond=0)
@@ -79,10 +85,10 @@ def is_within_schedule():
 
 def run_tasks():
     if not is_within_schedule():
-        print(f"Current time {datetime.now()} is outside the scheduled execution window. Skipping execution.")
+        print(f"Current time {datetime.now(tehran_tz)} is outside the scheduled execution window. Skipping execution.")
         return
 
-    print(f"Running tasks at {datetime.now()}")
+    print(f"Running tasks at {datetime.now(tehran_tz)}")
     insert_usage_data()
     calculate_and_display_usage()
     if should_run_cleanup():
