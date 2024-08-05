@@ -124,6 +124,6 @@ BEGIN
     SELECT user_id, username, usage_in_period, timestamp, report_number
     FROM PeriodicUsage
     WHERE timestamp BETWEEN p_start_time AND p_end_time
-    ORDER BY report_number ASC, user_id;
+    ORDER BY report_number ASC, user_id ASC;
 END //
 DELIMITER ;
