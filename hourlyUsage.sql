@@ -4,6 +4,16 @@ CREATE DATABASE IF NOT EXISTS UserUsageAnalytics;
 -- Switch to the UserUsageAnalytics database
 USE UserUsageAnalytics;
 
+-- Create a function to get current Tehran time
+DELIMITER //
+CREATE OR REPLACE FUNCTION get_tehran_time() 
+RETURNS DATETIME
+DETERMINISTIC
+BEGIN
+  RETURN CONVERT_TZ(NOW(), 'UTC', 'Asia/Tehran');
+END //
+DELIMITER ;
+
 -- Create table for storing usage snapshots if it doesn't exist
 CREATE TABLE IF NOT EXISTS UsageSnapshots (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -56,7 +66,7 @@ BEGIN
     SELECT COALESCE(MAX(report_number), 0) + 1 INTO current_report_number FROM PeriodicUsage;
     
     -- Get the timestamp of the last report
-    SELECT COALESCE(MAX(timestamp), DATE_SUB(NOW(), INTERVAL 5 MINUTE)) INTO last_report_time FROM PeriodicUsage;
+    SELECT COALESCE(MAX(timestamp), DATE_SUB(get_tehran_time(), INTERVAL 5 MINUTE)) INTO last_report_time FROM PeriodicUsage;
     
     INSERT INTO PeriodicUsage (user_id, username, usage_in_period, timestamp, report_number)
     SELECT 
@@ -66,12 +76,12 @@ BEGIN
             WHEN current_report_number = 1 THEN 0
             ELSE COALESCE(new.total_usage - COALESCE(old.total_usage, 0), 0)
         END AS usage_in_period,
-        NOW() AS timestamp,
+        get_tehran_time() AS timestamp,
         current_report_number AS report_number
     FROM 
         v_users u
     LEFT JOIN UsageSnapshots new ON u.id = new.user_id AND new.timestamp = (
-        SELECT MAX(timestamp) FROM UsageSnapshots WHERE user_id = u.id AND timestamp <= NOW()
+        SELECT MAX(timestamp) FROM UsageSnapshots WHERE user_id = u.id AND timestamp <= get_tehran_time()
     )
     LEFT JOIN UsageSnapshots old ON u.id = old.user_id AND old.timestamp = (
         SELECT MAX(timestamp) FROM UsageSnapshots 
