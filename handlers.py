@@ -68,16 +68,26 @@ async def process_schedule(message: types.Message, state: FSMContext):
         config["backup_interval_minutes"] = minutes
         save_config(config)
         
-        # Update the cron job
-        await update_cron_job(minutes)
+        # Run the update_backup_cron command automatically after setting the interval
+        update_backup_cron_command = "marzbackup update_backup_interval"
+        process = await asyncio.create_subprocess_shell(
+            update_backup_cron_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         
-        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        if process.returncode == 0:
+            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        else:
+            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
         await message.answer(f"خطا در پردازش زمانبندی: {e}")
     finally:
         await state.clear()
+
 
 async def update_cron_job(minutes):
     cron_schedule = convert_to_cron(minutes)
