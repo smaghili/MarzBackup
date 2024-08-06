@@ -85,19 +85,23 @@ async def update_cron_job(minutes):
         raise ValueError("Invalid time interval. Please use intervals that divide evenly into hours.")
 
     # Remove existing cron job
-    await asyncio.create_subprocess_shell(
-        "(crontab -l 2>/dev/null | grep -v '/usr/bin/python3 /opt/MarzBackup/backup.py') | crontab -",
+    remove_cmd = "(crontab -l 2>/dev/null | grep -v '/usr/bin/python3 /opt/MarzBackup/backup.py') | crontab -"
+    process = await asyncio.create_subprocess_shell(
+        remove_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
+    await process.communicate()
 
     # Add new cron job
     new_cron_job = f"{cron_schedule} /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> /var/log/marzbackup.log 2>&1"
-    await asyncio.create_subprocess_shell(
-        f"(crontab -l 2>/dev/null; echo \"{new_cron_job}\") | crontab -",
+    add_cmd = f"(crontab -l 2>/dev/null; echo \"{new_cron_job}\") | crontab -"
+    process = await asyncio.create_subprocess_shell(
+        add_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
+    await process.communicate()
 
 def convert_to_cron(minutes):
     if minutes == 60:
