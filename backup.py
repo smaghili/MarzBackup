@@ -81,6 +81,7 @@ async def create_and_send_backup(bot):
         process = await asyncio.create_subprocess_shell(f"zip -ur /root/marz-backup-{system}.zip {mysql_backup_dir}/*.sql")
         await process.communicate()
         
+        # Delete previous backup files
         process = await asyncio.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
         await process.communicate()
         
