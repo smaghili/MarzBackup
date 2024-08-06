@@ -6,19 +6,16 @@ TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
-USAGE_LOG_FILE="/var/log/marzbackup_usage.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
-USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
-LOCK_FILE="/var/run/hourlyReport.lock"
 
 get_current_version() {
-    if [ -f "$VERSION_FILE" ];then
+    if [ -f "$VERSION_FILE" ]; then
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
         echo $version
     else
-        echo "stable"  # Default to stable if version file doesn't exist
+        echo "stable"
     fi
 }
 
@@ -81,15 +78,19 @@ start() {
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         
-        # Run setup.py if API_TOKEN or ADMIN_CHAT_ID is missing
-        if ! grep -q "API_TOKEN" "$CONFIG_FILE" || ! grep -q "ADMIN_CHAT_ID" "$CONFIG_FILE"; then
+        # Check if API_TOKEN and ADMIN_CHAT_ID are set in the config file
+        API_TOKEN=$(jq -r '.API_TOKEN // empty' "$CONFIG_FILE")
+        ADMIN_CHAT_ID=$(jq -r '.ADMIN_CHAT_ID // empty' "$CONFIG_FILE")
+
+        if [ -z "$API_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
+            echo "API_TOKEN or ADMIN_CHAT_ID is missing. Running setup..."
             python3 setup.py
             if [ $? -ne 0 ]; then
                 echo "Setup failed. Please check the error messages and try again."
                 exit 1
             fi
         fi
-        
+
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
             if ps -p $PID > /dev/null; then
@@ -116,7 +117,7 @@ start() {
             echo "Failed to start the bot. PID file not created."
             cat "$LOG_FILE"
         fi
-        else
+    else
         echo "MarzBackup is not installed. Please install it first."
         exit 1
     fi
@@ -217,7 +218,7 @@ install_user_usage() {
     python3 "$INSTALL_DIR/config.py"
     
     # Read database information directly from config.json
-    if [ ! -f "$CONFIG_FILE" ];then
+    if [ ! -f "$CONFIG_FILE" ]; then
         echo "Error: Config file not found at $CONFIG_FILE"
         exit 1
     fi
@@ -242,10 +243,10 @@ install_user_usage() {
 
     # Execute SQL script to create the database and required tables and procedures
     SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"
-    if [ -f "$SQL_FILE" ];then
+    if [ -f "$SQL_FILE" ]; then
         echo "Setting up database structures using $db_type..."
         docker exec -i "$db_container" "$db_type" -u root -p"$db_password" < "$SQL_FILE"
-        if [ $? -ne 0 ];then
+        if [ $? -ne 0 ]; then
             echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
             exit 1
         else
@@ -261,7 +262,7 @@ install_user_usage() {
     
     # Convert report interval to cron format
     cron_schedule=$(convert_to_cron $report_interval)
-    if [ $? -ne 0 ];then
+    if [ $? -ne 0 ]; then
         echo "$cron_schedule"
         exit 1
     fi
@@ -311,21 +312,21 @@ case "$1" in
         update $@
         ;;
     start)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             start_user_usage
         else
             start
         fi
         ;;
     stop)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             stop_user_usage
         else
             stop
         fi
         ;;
     restart)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             stop_user_usage
             start_user_usage
         else
@@ -333,7 +334,7 @@ case "$1" in
         fi
         ;;
     status)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             if check_hourlyreport_running; then
                 echo "hourlyReport.py is running."
             else
@@ -344,7 +345,7 @@ case "$1" in
         fi
         ;;
     install)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             install_user_usage
         else
             echo "Unknown install option: $2"
@@ -353,9 +354,9 @@ case "$1" in
         fi
         ;;
     uninstall)
-        if [ "$2" == "user-usage" ];then
+        if [ "$2" == "user-usage" ]; then
             uninstall_user_usage
-        elif [ -z "$2" ];then
+        elif [ -z "$2" ]; then
             uninstall_marzbackup
         else
             echo "Unknown uninstall option: $2"
