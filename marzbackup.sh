@@ -6,16 +6,19 @@ TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 INSTALL_DIR="/opt/MarzBackup"
 CONFIG_DIR="/opt/marzbackup"
 LOG_FILE="/var/log/marzbackup.log"
+USAGE_LOG_FILE="/var/log/marzbackup_usage.log"
 PID_FILE="/var/run/marzbackup.pid"
 VERSION_FILE="$CONFIG_DIR/version.json"
 CONFIG_FILE="$CONFIG_DIR/config.json"
+USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
+LOCK_FILE="/var/run/hourlyReport.lock"
 
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
         echo $version
     else
-        echo "stable"
+        echo "stable"  # Default to stable if version file doesn't exist
     fi
 }
 
@@ -183,7 +186,7 @@ convert_to_cron() {
 }
 
 update_backup_cron() {
-    local backup_interval=$(jq -r '.backup_interval_minutes // 60' "$CONFIG_FILE")
+    local backup_interval=$(jq -r '.backup_interval_minutes' "$CONFIG_FILE")
     local cron_schedule=$(convert_to_cron $backup_interval)
     if [ $? -ne 0 ]; then
         echo "$cron_schedule"
@@ -191,7 +194,7 @@ update_backup_cron() {
     fi
     
     # Remove existing crontab entry for backup
-    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/backup.py") | crontab -
+    (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
     
     # Install new crontab for backup with flock to ensure only one instance runs
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
@@ -290,7 +293,7 @@ uninstall_marzbackup() {
     stop
 
     # Remove cron jobs
-    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/backup.py") | crontab -
+    (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
     (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
 
     # Remove installation directory
