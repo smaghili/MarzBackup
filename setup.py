@@ -1,8 +1,10 @@
+import json
 import os
 import sys
 from config import get_or_ask, save_config, load_config
 from aiogram import Bot
 import asyncio
+import subprocess
 
 async def validate_token(token):
     try:
@@ -46,6 +48,19 @@ async def setup():
             save_config(config)
     
     print("Setup completed successfully.")
+    
+    # Update backup cron job after setup
+    update_backup_cron_command = "marzbackup update_backup_interval"
+    process = await asyncio.create_subprocess_shell(
+        update_backup_cron_command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode == 0:
+        print("Backup cron job updated successfully.")
+    else:
+        print(f"Error updating backup cron job: {stderr.decode()}")
 
 if __name__ == "__main__":
     asyncio.run(setup())
