@@ -180,7 +180,7 @@ convert_to_cron() {
         if [ $remaining_minutes -eq 0 ]; then
             echo "0 */$hours * * *"
         else
-            echo "$remaining_minutes */$hours * * *"
+            return 1
         fi
     fi
 }
@@ -189,7 +189,7 @@ update_backup_cron() {
     local backup_interval=$(jq -r '.backup_interval_minutes' "$CONFIG_FILE")
     local cron_schedule=$(convert_to_cron $backup_interval)
     if [ $? -ne 0 ]; then
-        echo "$cron_schedule"
+        echo "ERROR: Invalid time interval. Please use intervals that divide evenly into hours."
         return 1
     fi
     
@@ -266,8 +266,8 @@ install_user_usage() {
     # Convert report interval to cron format
     cron_schedule=$(convert_to_cron $report_interval)
     if [ $? -ne 0 ]; then
-        echo "$cron_schedule"
-        exit 1
+        echo "ERROR: Invalid report interval. Please use intervals that divide evenly into hours."
+        return 1
     fi
     
     # Remove existing crontab entry for hourlyReport.py
