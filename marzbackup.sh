@@ -176,8 +176,7 @@ convert_to_cron() {
         if [ $remaining_minutes -eq 0 ]; then
             echo "0 */$hours * * *"
         else
-            echo "ERROR: Invalid time interval. Please use intervals that divide evenly into hours."
-            return 1
+            echo "$remaining_minutes */$hours * * *"
         fi
     fi
 }
