@@ -89,6 +89,13 @@ async def create_and_send_backup(bot):
         await bot.send_document(chat_id=ADMIN_CHAT_ID, document=backup_file, caption=caption)
         
         print(f"{system.capitalize()} backup completed and sent successfully.")
+
+        # Remove previous backup files if they exist
+        backup_files = [f for f in os.listdir("/root") if f.startswith("marz-backup-") and f.endswith(".zip")]
+        backup_files.remove(f"marz-backup-{system}.zip")  # Keep the current backup
+        for old_backup in backup_files:
+            os.remove(os.path.join("/root", old_backup))
+        
         return True
     except Exception as e:
         error_message = f"An error occurred during the backup process: {str(e)}"
