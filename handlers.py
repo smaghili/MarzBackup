@@ -57,6 +57,19 @@ async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
     await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
 
+def convert_to_cron(minutes):
+    if minutes == 60:
+        return "0 * * * *"
+    elif minutes < 60:
+        return f"*/{minutes} * * * *"
+    else:
+        hours = minutes // 60
+        remaining_minutes = minutes % 60
+        if remaining_minutes == 0:
+            return f"0 */{hours} * * *"
+        else:
+            return f"{remaining_minutes} */{hours} * * *"
+
 @router.message(BackupStates.waiting_for_schedule)
 async def process_schedule(message: types.Message, state: FSMContext):
     try:
@@ -68,22 +81,22 @@ async def process_schedule(message: types.Message, state: FSMContext):
         config["backup_interval_minutes"] = minutes
         save_config(config)
         
-        # Run the update_backup_cron command
-        process = await asyncio.create_subprocess_shell(
-            "marzbackup update_backup_interval",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
+        cron_schedule = convert_to_cron(minutes)
         
-        if process.returncode == 0:
-            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
-        else:
-            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
+        # Set up the cron job
+        cron_command = f"{cron_schedule} /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> /var/log/marzbackup.log 2>&1"
+        
+        # Remove existing crontab entry for backup
+        subprocess.run("(crontab -l 2>/dev/null | grep -v '/opt/MarzBackup/backup.py') | crontab -", shell=True, check=True)
+        
+        # Install new crontab for backup with flock to ensure only one instance runs
+        subprocess.run(f"(crontab -l 2>/dev/null; echo '{cron_command}') | crontab -", shell=True, check=True)
+        
+        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
-        await message.answer(f"خطا در پردازش زمانبندی: {e}")
+        await message.answer(f"خطا در تنظیم زمانبندی: {e}")
     finally:
         await state.clear()
 
