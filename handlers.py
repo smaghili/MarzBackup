@@ -7,7 +7,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
-from backup import create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -23,21 +22,21 @@ router = Router()
 # Create a keyboard markup
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
-        [types.KeyboardButton(text="پشتیبان‌گیری فوری")],
-        [types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
-        [types.KeyboardButton(text="بازیابی پشتیبان")],
-        [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
+        [types.KeyboardButton(text="Immediate Backup")],
+        [types.KeyboardButton(text="Set Backup Interval")],
+        [types.KeyboardButton(text="Restore Backup")],
+        [types.KeyboardButton(text="Change User Usage Report Interval")]
     ],
     resize_keyboard=True
 )
 
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
+    await message.reply("Welcome to MarzBackup bot! Please select one of the options below:", reply_markup=keyboard)
 
-@router.message(F.text == "پشتیبان‌گیری فوری")
+@router.message(F.text == "Immediate Backup")
 async def handle_get_backup(message: types.Message):
-    await message.answer("در حال تهیه پشتیبان... لطفاً صبر کنید.")
+    await message.answer("Creating backup... Please wait.")
     try:
         process = await asyncio.create_subprocess_shell(
             "/usr/bin/python3 /opt/MarzBackup/backup.py",
@@ -46,23 +45,23 @@ async def handle_get_backup(message: types.Message):
         )
         stdout, stderr = await process.communicate()
         if process.returncode == 0:
-            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+            await message.answer("Backup successfully created and sent.")
         else:
-            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {stderr.decode()}")
+            await message.answer(f"An error occurred during the backup process: {stderr.decode()}")
     except Exception as e:
-        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+        await message.answer(f"Error in backup process: {e}")
 
-@router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
+@router.message(F.text == "Set Backup Interval")
 async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
-    await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '10' برای هر 10 دقیقه یکبار).")
+    await message.answer("Please send the backup interval in minutes (e.g., '10' for every 10 minutes).")
 
 @router.message(BackupStates.waiting_for_schedule)
 async def process_schedule(message: types.Message, state: FSMContext):
     try:
         minutes = int(message.text)
         if minutes <= 0:
-            raise ValueError("دقیقه باید عدد مثبت باشد")
+            raise ValueError("Minutes must be a positive number.")
         
         config = load_config()
         config["backup_interval_minutes"] = minutes
@@ -78,27 +77,27 @@ async def process_schedule(message: types.Message, state: FSMContext):
         stdout, stderr = await process.communicate()
         
         if process.returncode == 0:
-            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+            await message.answer(f"Backup interval set to every {minutes} minutes.")
         else:
-            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
+            await message.answer(f"Error setting backup interval: {stderr.decode()}")
     except ValueError:
-        await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
+        await message.answer("Please enter a valid positive integer for minutes.")
     finally:
         await state.clear()
 
-@router.message(F.text == "بازیابی پشتیبان")
+@router.message(F.text == "Restore Backup")
 async def request_sql_file(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_sql_file)
-    await message.answer("لطفاً فایل SQL پشتیبان را ارسال کنید.")
+    await message.answer("Please send the backup SQL file.")
 
 @router.message(BackupStates.waiting_for_sql_file)
 async def process_sql_file(message: types.Message, state: FSMContext):
     if not message.document:
-        await message.answer("لطفاً یک فایل ارسال کنید.")
+        await message.answer("Please send a file.")
         return
     
     if not message.document.file_name.lower().endswith('.sql'):
-        await message.answer("فایل ارسالی معتبر نیست. لطفاً یک فایل با پسوند .sql ارسال کنید.")
+        await message.answer("Invalid file type. Please send a .sql file.")
         return
 
     try:
@@ -120,7 +119,7 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         db_name = config.get("db_name")
 
         if not db_container or not db_password or not db_name:
-            await message.answer("اطلاعات پایگاه داده در فایل کانفیگ یافت نشد.")
+            await message.answer("Database information not found in config file.")
             return
 
         # Restore the database
@@ -133,26 +132,26 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         stdout, stderr = await process.communicate()
 
         if process.returncode == 0:
-            await message.answer("بازیابی پایگاه داده با موفقیت انجام شد.")
+            await message.answer("Database successfully restored.")
         else:
-            await message.answer(f"خطا در بازیابی پایگاه داده: {stderr.decode()}")
+            await message.answer(f"Error restoring database: {stderr.decode()}")
 
     except Exception as e:
-        await message.answer(f"خطا در پردازش فایل SQL: {e}")
+        await message.answer(f"Error processing SQL file: {e}")
     finally:
         await state.clear()
 
-@router.message(F.text == "تغییر زمان گزارش مصرف کاربران")
+@router.message(F.text == "Change User Usage Report Interval")
 async def change_report_interval(message: types.Message, state: FSMContext):
     await state.set_state(ReportIntervalStates.waiting_for_interval)
-    await message.answer("لطفا زمان گزارش مصرف کاربران را بر اساس دقیقه وارد کنید (توجه کنید مدت زمان‌های پایین باعث افزایش حجم پایگاه داده می‌شود. عدد پیشنهادی 60 است):")
+    await message.answer("Please enter the user usage report interval in minutes (Note: Short intervals may increase database size. Recommended value is 60):")
 
 @router.message(ReportIntervalStates.waiting_for_interval)
 async def process_report_interval(message: types.Message, state: FSMContext):
     try:
         interval = int(message.text)
         if interval <= 0:
-            raise ValueError("Interval must be positive")
+            raise ValueError("Interval must be a positive number.")
         
         config = load_config()
         config['report_interval'] = interval
@@ -167,11 +166,11 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         stdout, stderr = await process.communicate()
         
         if process.returncode == 0:
-            await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
+            await message.answer(f"User usage report interval set to {interval} minutes and the reporting system has been restarted.")
         else:
-            await message.answer(f"خطا در تنظیم زمان گزارش: {stderr.decode()}")
+            await message.answer(f"Error setting report interval: {stderr.decode()}")
     except ValueError:
-        await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
+        await message.answer("Please enter a valid positive integer.")
     finally:
         await state.clear()
 
