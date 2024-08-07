@@ -14,7 +14,7 @@ USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 LOCK_FILE="/var/run/hourlyReport.lock"
 
 ensure_single_instance() {
-    pkill -f "python3 /opt/MarzBackup/main.py"
+    pkill -9 -f "python3 /opt/MarzBackup/main.py"
     rm -f "$PID_FILE"
 }
 
@@ -103,10 +103,10 @@ update() {
 
 start() {
     echo "Starting MarzBackup..."
+    ensure_single_instance
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         check_and_get_config
-        ensure_single_instance
         echo "Running MarzBackup in background..."
         nohup python3 main.py > "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
