@@ -289,11 +289,6 @@ if command -v docker &> /dev/null; then
     docker rm $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
 fi
 
-# Remove Python packages installed by MarzBackup
-if command -v pip3 &> /dev/null; then
-    echo "Removing Python packages installed by MarzBackup..."
-    pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
-fi
     # Final checks
     echo "Performing final checks..."
     if pgrep -f "MarzBackup" > /dev/null; then
