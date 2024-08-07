@@ -46,13 +46,23 @@ async def handle_get_backup(message: types.Message):
         )
         stdout, stderr = await process.communicate()
         if process.returncode == 0:
-            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
-            
-            # ارسال فایل بکاپ به کاربر
             backup_file_path = stdout.decode().strip()
-            await message.answer_document(types.InputFile(backup_file_path))
+            logging.info(f"Backup file created at: {backup_file_path}")
+            
+            if os.path.exists(backup_file_path):
+                try:
+                    await message.answer_document(types.FSInputFile(backup_file_path))
+                    await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+                except Exception as e:
+                    logging.error(f"Error sending backup file: {e}")
+                    await message.answer("خطا در ارسال فایل پشتیبان. لطفاً لاگ‌ها را بررسی کنید.")
+            else:
+                logging.error(f"Backup file not found at {backup_file_path}")
+                await message.answer("فایل پشتیبان ایجاد شد اما در مسیر مورد نظر یافت نشد.")
         else:
-            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {stderr.decode()}")
+            error_message = stderr.decode()
+            logging.error(f"Error in backup process: {error_message}")
+            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {error_message}")
     except Exception as e:
         logging.error(f"Error in backup process: {e}")
         await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً لاگ‌ها را بررسی کنید.")
