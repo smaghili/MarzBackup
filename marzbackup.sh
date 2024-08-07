@@ -203,24 +203,46 @@ update_backup_cron() {
 
 uninstall_marzbackup() {
     echo "Uninstalling MarzBackup..."
-    ensure_single_instance
-
+    
+    # Stop all related processes
+    pkill -f "/opt/MarzBackup/main.py"
+    pkill -f "/opt/MarzBackup/hourlyReport.py"
+    pkill -f "/opt/MarzBackup/backup.py"
+    
     # Remove cron jobs
-    (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
-    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
-
-    # Remove installation directory
+    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup") | crontab -
+    
+    # Remove installation directories
     sudo rm -rf "$INSTALL_DIR"
     sudo rm -rf "$CONFIG_DIR"
-
+    
     # Remove log files
     sudo rm -f "$LOG_FILE"
     sudo rm -f "$USAGE_LOG_FILE"
-
+    
+    # Remove PID files
+    sudo rm -f "$PID_FILE"
+    sudo rm -f "$USAGE_PID_FILE"
+    
+    # Remove lock files
+    sudo rm -f "$LOCK_FILE"
+    sudo rm -f "/tmp/marzbackup.lock"
+    
     # Remove script
     sudo rm -f "$SCRIPT_PATH"
-
-    echo "MarzBackup has been uninstalled."
+    
+    # Remove any remaining symbolic links
+    sudo find /usr/local/bin -lname '*MarzBackup*' -delete
+    
+    echo "MarzBackup has been completely uninstalled."
+    
+    # Optionally, prompt for reboot
+    read -p "It's recommended to reboot your system. Would you like to reboot now? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]
+    then
+        sudo reboot
+    fi
 }
 
 install_user_usage() {
