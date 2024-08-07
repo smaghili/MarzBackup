@@ -196,6 +196,26 @@ status() {
     fi
 }
 
+check_version() {
+    if [ ! -f "$VERSION_FILE" ]; then
+        echo "Version file not found. Unable to check version."
+        return 1
+    fi
+    
+    CURRENT_VERSION=$(jq -r '.installed_version' "$VERSION_FILE")
+    echo "Current installed version: $CURRENT_VERSION"
+    
+    # Check for updates
+    git fetch origin --quiet
+    LATEST_VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+    
+    if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+        echo "A new version ($LATEST_VERSION) is available. Use 'marzbackup update' to upgrade."
+    else
+        echo "You are using the latest version."
+    fi
+}
+
 convert_to_cron() {
     local minutes=$1
     if [ $minutes -eq 60 ]; then
@@ -401,6 +421,9 @@ case "$1" in
     update)
         update $@
         send_telegram_message "ربات MarzBackup با موفقیت به‌روزرسانی شد!"
+        ;;
+    check-version)
+        check_version
         ;;
     start)
         if [ "$2" == "user-usage" ]; then
