@@ -295,14 +295,7 @@ if command -v pip3 &> /dev/null; then
     pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
 fi
 
-echo "Cleanup complete. It's recommended to reboot your system now."
-echo "Would you like to reboot now? (y/n)"
-read -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]
-then
-    sudo reboot
-fi
+echo "Cleanup complete."
 }
 
 install_user_usage() {
