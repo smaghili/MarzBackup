@@ -18,14 +18,13 @@ get_current_version() {
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
         echo $version
     else
-        echo "stable"  # Default to stable if version file doesn't exist
+        echo "stable" # Default to stable if version file doesn't exist
     fi
 }
 
 check_and_get_config() {
     API_TOKEN=$(jq -r '.API_TOKEN // empty' "$CONFIG_FILE")
     ADMIN_CHAT_ID=$(jq -r '.ADMIN_CHAT_ID // empty' "$CONFIG_FILE")
-
     if [ -z "$API_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
         echo "API_TOKEN or ADMIN_CHAT_ID is missing. Running setup..."
         python3 "$INSTALL_DIR/setup.py"
@@ -39,7 +38,6 @@ check_and_get_config() {
 update() {
     echo "Checking for updates..."
     current_version=$(get_current_version)
-    
     if [ "$2" == "dev" ]; then
         BRANCH="dev"
         NEW_VERSION="dev"
@@ -60,7 +58,6 @@ update() {
         git checkout $BRANCH
         LOCAL=$(git rev-parse HEAD)
         REMOTE=$(git rev-parse @{u})
-
         if [ "$LOCAL" = "$REMOTE" ] && [ "$NEW_VERSION" == "$current_version" ]; then
             echo "You are already using the latest $NEW_VERSION version."
             exit 0
@@ -69,9 +66,8 @@ update() {
             stop
             git reset --hard origin/$BRANCH
             pip3 install -r requirements.txt
-            
             check_and_get_config
-            
+
             # Update marzbackup.sh
             if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
                 sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
@@ -80,7 +76,8 @@ update() {
                 sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
                 echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
                 echo "marzbackup.sh has been updated. Restarting with new version..."
-                exec "$SCRIPT_PATH" start
+                exec "$SCRIPT_PATH"
+                start
             else
                 echo "Error: marzbackup.sh not found in repository."
                 exit 1
@@ -96,9 +93,7 @@ start() {
     echo "Starting MarzBackup..."
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
-        
         check_and_get_config
-
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
             if ps -p $PID > /dev/null; then
@@ -109,13 +104,12 @@ start() {
                 rm "$PID_FILE"
             fi
         fi
-        
         echo "Running MarzBackup in foreground..."
         python3 main.py
-        
         if [ $? -eq 0 ]; then
             echo "MarzBackup started successfully. Moving to background..."
-            nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
+            nohup python3 main.py > "$LOG_FILE" 2>&1 &
+            echo $! > "$PID_FILE"
             sleep 2
             if [ -f "$PID_FILE" ]; then
                 PID=$(cat "$PID_FILE")
@@ -204,17 +198,17 @@ update_backup_cron() {
     local backup_interval=$(jq -r '.backup_interval_minutes' "$CONFIG_FILE")
     local cron_schedule=$(convert_to_cron $backup_interval)
     if [ $? -ne 0 ]; then
-        echo "خطا: فاصله زمانی نامعتبر. لطفاً از فواصل زمانی استفاده کنید که به طور دقیق به ساعت تقسیم می‌شوند."
+        echo "Error: Invalid interval. Please use intervals that divide evenly into hours."
         return 1
     fi
-    
-    # حذف ورودی کرون تب قبلی برای پشتیبان‌گیری
+
+    # Remove previous cron job for backup
     (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
-    
-    # نصب کرون تب جدید برای پشتیبان‌گیری با استفاده از flock برای اطمینان از اجرای تنها یک نمونه
+
+    # Install new cron job for backup using flock to ensure only one instance runs
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
-    
-    echo "کرون جاب پشتیبان‌گیری به‌روزرسانی شد. پشتیبان‌گیری هر $backup_interval دقیقه یکبار اجرا خواهد شد."
+
+    echo "Backup cron job updated. Backup will run every $backup_interval minutes."
 }
 
 uninstall_marzbackup() {
@@ -241,28 +235,27 @@ uninstall_marzbackup() {
 
 install_user_usage() {
     echo "Installing user usage tracking system..."
-    
+
     # Check if hourlyReport.py is already running
     if check_hourlyreport_running; then
         echo "hourlyReport.py is already running. Please stop it before installation."
         return 1
     fi
-    
+
     # Check if jq is installed
     if ! command -v jq &> /dev/null; then
         echo "jq is not installed. Installing jq..."
         sudo apt-get update && sudo apt-get install -y jq
     fi
-    
+
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
-    
+
     # Read database information directly from config.json
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "Error: Config file not found at $CONFIG_FILE"
         exit 1
     fi
-    
     config=$(cat "$CONFIG_FILE")
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
@@ -299,28 +292,28 @@ install_user_usage() {
 
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
-    
+
     # Convert report interval to cron format
     cron_schedule=$(convert_to_cron $report_interval)
     if [ $? -ne 0 ]; then
         echo "ERROR: Invalid report interval. Please use intervals that divide evenly into hours."
         return 1
     fi
-    
+
     # Remove existing crontab entry for hourlyReport.py
     echo "Removing existing crontab entry for user usage tracking..."
     (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
-    
+
     # Install new crontab for hourlyReport.py
     echo "Installing new crontab for user usage tracking..."
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 $INSTALL_DIR/hourlyReport.py >> $USAGE_LOG_FILE 2>&1") | crontab -
-    
+
     # Start hourlyReport.py
     start_hourlyreport
-    
+
     # Update backup cron job
     update_backup_cron
-    
+
     echo "User usage tracking system installation completed."
     echo "Report interval set to every $report_interval minutes."
 }
