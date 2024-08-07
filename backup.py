@@ -82,7 +82,7 @@ def create_backup():
     
     if result.returncode == 0:
         logging.info(f"Backup created successfully: {zip_file}")
-        print(zip_file)  # Print the path to the zip file for handlers.py to read
+        print(f"BACKUP_PATH:{zip_file}")
         return True
     else:
         logging.error(f"Zip creation failed: {result.stderr}")
