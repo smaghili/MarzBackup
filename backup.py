@@ -56,6 +56,7 @@ def create_backup():
     
     if result.returncode == 0:
         logging.info(f"Backup created successfully: {backup_file}")
+        print(backup_file)  # Print the path to the backup file for handlers.py to read
         return True
     else:
         logging.error(f"Backup failed: {result.stderr}")
