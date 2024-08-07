@@ -41,35 +41,6 @@ save_config() {
     echo "Configuration saved successfully."
 }
 
-# Function to install or update MarzBackup
-install_marzbackup() {
-    echo "Updating package lists..."
-    sudo apt update
-
-    echo "Installing required packages..."
-    sudo apt install -y python3 python3-pip git
-
-    if [ -d "$INSTALL_DIR" ]; then
-        echo "Updating existing MarzBackup installation..."
-        cd "$INSTALL_DIR"
-        git fetch origin
-        git reset --hard origin/main
-    else
-        echo "Performing fresh MarzBackup installation..."
-        sudo git clone "$REPO_URL" "$INSTALL_DIR"
-        cd "$INSTALL_DIR"
-    fi
-
-    echo "Installing Python dependencies..."
-    pip3 install -r requirements.txt
-
-    echo "Setting up MarzBackup command..."
-    sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
-    sudo chmod +x /usr/local/bin/marzbackup
-
-    echo "MarzBackup installation completed successfully."
-}
-
 # Main installation process
 echo "Welcome to MarzBackup installation!"
 
@@ -80,20 +51,37 @@ get_admin_chat_id
 # Save configuration
 save_config
 
-# Install MarzBackup
-install_marzbackup
+# Update package lists
+sudo apt update
 
-echo "Installation process completed."
-echo "You can now start MarzBackup using: marzbackup start"
-echo "To run MarzBackup in the foreground for testing, use: python3 $INSTALL_DIR/main.py"
+# Install required packages
+sudo apt install -y python3 python3-pip git
 
-# Ask user if they want to start MarzBackup now
-read -p "Do you want to start MarzBackup now? (y/n): " start_now
-if [[ $start_now == "y" || $start_now == "Y" ]]; then
-    echo "Starting MarzBackup..."
-    marzbackup start
+# Clone or update the repository
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Updating existing MarzBackup installation..."
+    cd "$INSTALL_DIR"
+    git fetch origin
+    git reset --hard origin/main
 else
-    echo "You can start MarzBackup later using: marzbackup start"
+    echo "Performing fresh MarzBackup installation..."
+    sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
 fi
 
-echo "Thank you for installing MarzBackup!"
+# Install Python dependencies
+pip3 install -r requirements.txt
+
+# Copy the marzbackup.sh script to /usr/local/bin and make it executable
+sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
+sudo chmod +x /usr/local/bin/marzbackup
+
+echo "Installation completed. Starting the bot in the foreground for testing..."
+
+# Start the bot in the foreground
+python3 "$INSTALL_DIR/main.py"
+
+# If the bot starts successfully, it will continue running. 
+# The user can stop it with Ctrl+C and then start it in the background if desired.
+echo "If the bot started successfully, you can stop it with Ctrl+C."
+echo "To run the bot in the background, use: marzbackup start"
