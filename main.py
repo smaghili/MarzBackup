@@ -79,9 +79,15 @@ async def validate_config():
     else:
         logging.info("Config file is up to date")
 
+async def send_telegram_message(message):
+    try:
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
+    except Exception as e:
+        logging.error(f"Failed to send Telegram message: {e}")
+
 async def on_startup(bot: Bot):
     await validate_config()
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="MarzBackup bot has been successfully started!")
+    await send_telegram_message("ربات MarzBackup با موفقیت راه‌اندازی شد!")
 
 async def main():
     # Register all handlers
