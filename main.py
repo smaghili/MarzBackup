@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import load_config, save_config
 from handlers import register_handlers
+import fcntl
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -22,6 +23,17 @@ if not API_TOKEN or not ADMIN_CHAT_ID:
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+def acquire_lock():
+    try:
+        lock_file = open("/tmp/marzbackup_bot.lock", "w")
+        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lock_file
+    except IOError:
+        print("Another instance is already running")
+        sys.exit(1)
+
+lock_file = acquire_lock()
 
 async def validate_config():
     config = load_config()
