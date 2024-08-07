@@ -225,79 +225,84 @@ update_backup_cron() {
 }
 
 uninstall_marzbackup() {
-    echo "Uninstalling MarzBackup..."
-    
-    # Stop all related processes
-    pkill -f "/opt/MarzBackup/main.py" 2>/dev/null
-    pkill -f "/opt/MarzBackup/hourlyReport.py" 2>/dev/null
-    pkill -f "/opt/MarzBackup/backup.py" 2>/dev/null
-    pkill -f "aiogram" 2>/dev/null  # Kill any running Telegram bot processes
-    
-    # Kill any remaining Python processes related to MarzBackup
-    pids=$(pgrep -f "python.*MarzBackup")
-    if [ ! -z "$pids" ]; then
-        echo "Stopping remaining MarzBackup processes..."
-        kill $pids 2>/dev/null
-        sleep 2
-        kill -9 $pids 2>/dev/null
-    fi
-    
-    # Remove cron jobs
-    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup") | crontab -
-    
-    # Remove installation directories
-    sudo rm -rf "$INSTALL_DIR"
-    sudo rm -rf "$CONFIG_DIR"
-    
-    # Remove log files
-    sudo rm -f "$LOG_FILE"
-    sudo rm -f "$USAGE_LOG_FILE"
-    
-    # Remove PID files
-    sudo rm -f "$PID_FILE"
-    sudo rm -f "$USAGE_PID_FILE"
-    
-    # Remove lock files
-    sudo rm -f "$LOCK_FILE"
-    sudo rm -f "/tmp/marzbackup.lock"
-    sudo rm -f "/tmp/marzbackup_bot.lock"
-    
-    # Remove script and any potential symlinks
-    sudo rm -f "$SCRIPT_PATH"
-    sudo find /usr/local/bin -lname '*MarzBackup*' -delete
-    
-    # Remove any potential systemd service
-    if systemctl is-active --quiet marzbackup.service; then
-        sudo systemctl stop marzbackup.service
-        sudo systemctl disable marzbackup.service
-    fi
-    sudo rm -f /etc/systemd/system/marzbackup.service
-    sudo systemctl daemon-reload
-    
-    # Remove any potential startup scripts
-    sudo rm -f /etc/init.d/marzbackup
-    sudo update-rc.d marzbackup remove 2>/dev/null
-    
-    # Remove any potential Docker containers (if used)
-    if command -v docker &> /dev/null; then
-        docker stop $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
-        docker rm $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
-    fi
-    
-    # Remove Python packages installed by MarzBackup
-    if command -v pip3 &> /dev/null; then
-        pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
-    fi
-    
-    echo "MarzBackup has been completely uninstalled."
-    
-    # Optionally, prompt for reboot
-    read -p "It's recommended to reboot your system. Would you like to reboot now? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]
-    then
-        sudo reboot
-    fi
+echo "Starting comprehensive cleanup of MarzBackup..."
+
+# Kill all Python processes related to MarzBackup
+echo "Stopping all MarzBackup related processes..."
+pkill -f "/opt/MarzBackup/main.py"
+pkill -f "/opt/MarzBackup/hourlyReport.py"
+pkill -f "/opt/MarzBackup/backup.py"
+pkill -f "aiogram"  # Kill any running Telegram bot processes
+
+# Force kill any remaining Python processes related to MarzBackup
+pids=$(pgrep -f "python.*MarzBackup")
+if [ ! -z "$pids" ]; then
+    echo "Force stopping remaining MarzBackup processes..."
+    kill -9 $pids
+fi
+
+# Remove cron jobs
+echo "Removing cron jobs..."
+(crontab -l 2>/dev/null | grep -v "/opt/MarzBackup") | crontab -
+
+# Remove installation directories
+echo "Removing MarzBackup directories..."
+sudo rm -rf /opt/MarzBackup
+sudo rm -rf /opt/marzbackup
+
+# Remove log files
+echo "Removing log files..."
+sudo rm -f /var/log/marzbackup.log
+sudo rm -f /var/log/marzbackup_usage.log
+
+# Remove PID and lock files
+echo "Removing PID and lock files..."
+sudo rm -f /var/run/marzbackup.pid
+sudo rm -f /var/run/marzbackup_usage.pid
+sudo rm -f /var/run/hourlyReport.lock
+sudo rm -f /tmp/marzbackup.lock
+sudo rm -f /tmp/marzbackup_bot.lock
+
+# Remove marzbackup script and any potential symlinks
+echo "Removing MarzBackup scripts..."
+sudo rm -f /usr/local/bin/marzbackup
+sudo find /usr/local/bin -lname '*MarzBackup*' -delete
+
+# Remove any potential systemd service
+echo "Removing systemd service if exists..."
+if systemctl is-active --quiet marzbackup.service; then
+    sudo systemctl stop marzbackup.service
+    sudo systemctl disable marzbackup.service
+fi
+sudo rm -f /etc/systemd/system/marzbackup.service
+sudo systemctl daemon-reload
+
+# Remove any potential startup scripts
+echo "Removing any startup scripts..."
+sudo rm -f /etc/init.d/marzbackup
+sudo update-rc.d marzbackup remove 2>/dev/null
+
+# Remove any potential Docker containers (if used)
+if command -v docker &> /dev/null; then
+    echo "Removing any Docker containers related to MarzBackup..."
+    docker stop $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
+    docker rm $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
+fi
+
+# Remove Python packages installed by MarzBackup
+if command -v pip3 &> /dev/null; then
+    echo "Removing Python packages installed by MarzBackup..."
+    pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
+fi
+
+echo "Cleanup complete. It's recommended to reboot your system now."
+echo "Would you like to reboot now? (y/n)"
+read -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]
+then
+    sudo reboot
+fi
 }
 
 install_user_usage() {
