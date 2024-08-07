@@ -294,8 +294,21 @@ if command -v pip3 &> /dev/null; then
     echo "Removing Python packages installed by MarzBackup..."
     pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
 fi
-
-echo "Cleanup complete."
+    # Final checks
+    echo "Performing final checks..."
+    if pgrep -f "MarzBackup" > /dev/null; then
+        echo "Warning: Some MarzBackup processes are still running. You may need to manually stop them or reboot."
+    else
+        echo "All MarzBackup processes have been stopped."
+    fi
+    
+    if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
+        echo "Warning: Some MarzBackup directories still exist. You may need to manually remove them."
+    else
+        echo "All MarzBackup directories have been removed."
+    fi
+    
+    echo "MarzBackup has been completely uninstalled."
 }
 
 install_user_usage() {
