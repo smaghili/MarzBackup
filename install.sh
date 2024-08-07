@@ -1,21 +1,12 @@
 #!/bin/bash
 
-set -e  # Exit immediately if a command exits with a non-zero status.
+set -e
 
-# Function to check if we're in an interactive environment
-check_interactive() {
-    if [ ! -t 0 ]; then
-        echo "Error: This script must be run in an interactive environment."
-        echo "Please download the script first and then run it directly:"
-        echo "1. curl -O https://raw.githubusercontent.com/smaghili/MarzBackup/main/install.sh"
-        echo "2. chmod +x install.sh"
-        echo "3. ./install.sh"
-        exit 1
-    fi
-}
-
-# Check interactivity before doing anything else
-check_interactive
+CONFIG_DIR="/opt/marzbackup"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+REPO_URL="https://github.com/smaghili/MarzBackup.git"
+INSTALL_DIR="/opt/MarzBackup"
+LOG_FILE="/var/log/marzbackup.log"
 
 # Function to get and validate API_TOKEN
 get_api_token() {
@@ -43,61 +34,66 @@ get_admin_chat_id() {
     done
 }
 
-# Main installation function
-install_marzbackup() {
-    echo "Starting MarzBackup installation..."
-
-    # Get necessary information first
-    get_api_token
-    get_admin_chat_id
-
-    # Set the GitHub repository URL and installation directory
-    REPO_URL="https://github.com/smaghili/MarzBackup.git"
-    INSTALL_DIR="/opt/MarzBackup"
-    CONFIG_DIR="/opt/marzbackup"
-    LOG_FILE="/var/log/marzbackup.log"
-    CONFIG_FILE="$CONFIG_DIR/config.json"
-
-    # Create config directory if it doesn't exist
+# Function to save configuration
+save_config() {
     sudo mkdir -p "$CONFIG_DIR"
-
-    # Create or update config file
     echo "{\"API_TOKEN\": \"$API_TOKEN\", \"ADMIN_CHAT_ID\": \"$ADMIN_CHAT_ID\"}" | sudo tee "$CONFIG_FILE" > /dev/null
-    echo "Configuration saved."
+    echo "Configuration saved successfully."
+}
 
-    # Update package lists
+# Function to install or update MarzBackup
+install_marzbackup() {
+    echo "Updating package lists..."
     sudo apt update
 
-    # Install Python 3, pip, and git if not already installed
+    echo "Installing required packages..."
     sudo apt install -y python3 python3-pip git
 
-    # Clone or update the GitHub repository
     if [ -d "$INSTALL_DIR" ]; then
-        echo "Updating existing installation..."
+        echo "Updating existing MarzBackup installation..."
         cd "$INSTALL_DIR"
         git fetch origin
         git reset --hard origin/main
     else
-        echo "Performing fresh installation..."
+        echo "Performing fresh MarzBackup installation..."
         sudo git clone "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
     fi
 
-    # Install required Python packages
+    echo "Installing Python dependencies..."
     pip3 install -r requirements.txt
 
-    # Copy the marzbackup.sh script to /usr/local/bin and make it executable
+    echo "Setting up MarzBackup command..."
     sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
     sudo chmod +x /usr/local/bin/marzbackup
 
-    echo "Installation completed. Starting the bot in the foreground..."
-
-    # Start the bot in the foreground
-    python3 "$INSTALL_DIR/main.py"
-
-    # The script will exit here if the bot doesn't start successfully
-    echo "MarzBackup is now running. To start it in the background, use: marzbackup start"
+    echo "MarzBackup installation completed successfully."
 }
 
-# Run the installation
+# Main installation process
+echo "Welcome to MarzBackup installation!"
+
+# Get configuration information
+get_api_token
+get_admin_chat_id
+
+# Save configuration
+save_config
+
+# Install MarzBackup
 install_marzbackup
+
+echo "Installation process completed."
+echo "You can now start MarzBackup using: marzbackup start"
+echo "To run MarzBackup in the foreground for testing, use: python3 $INSTALL_DIR/main.py"
+
+# Ask user if they want to start MarzBackup now
+read -p "Do you want to start MarzBackup now? (y/n): " start_now
+if [[ $start_now == "y" || $start_now == "Y" ]]; then
+    echo "Starting MarzBackup..."
+    marzbackup start
+else
+    echo "You can start MarzBackup later using: marzbackup start"
+fi
+
+echo "Thank you for installing MarzBackup!"
