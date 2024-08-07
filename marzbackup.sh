@@ -49,73 +49,6 @@ check_and_get_config() {
     fi
 }
 
-update() {
-    echo "Checking for updates..."
-    if [ ! -d "$INSTALL_DIR" ]; then
-        echo "MarzBackup is not installed. Please install it first."
-        exit 1
-    fi
-    
-    cd "$INSTALL_DIR"
-    
-    if [ ! -d ".git" ]; then
-        echo "Git repository not found. Initializing..."
-        git init
-        git remote add origin "$REPO_URL"
-    fi
-    
-    git fetch origin
-    
-    current_version=$(get_current_version)
-    if [ "$2" == "dev" ]; then
-        BRANCH="dev"
-        NEW_VERSION="dev"
-    elif [ "$2" == "stable" ]; then
-        BRANCH="main"
-        NEW_VERSION="stable"
-    elif [ -z "$2" ]; then
-        BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        NEW_VERSION=$current_version
-    else
-        echo "Invalid version specified. Use 'dev' or 'stable'."
-        exit 1
-    fi
-    
-    LOCAL=$(git rev-parse HEAD)
-    REMOTE=$(git rev-parse origin/$BRANCH)
-    
-    if [ "$LOCAL" = "$REMOTE" ]; then
-        echo "You are already using the latest $NEW_VERSION version."
-        exit 0
-    else
-        echo "Updating MarzBackup to the latest $NEW_VERSION version..."
-        git reset --hard origin/$BRANCH
-        
-        # Update Python dependencies
-        pip3 install -r requirements.txt
-        
-        # Update marzbackup.sh
-        if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
-            sudo cp "$INSTALL_DIR/marzbackup.sh" "$SCRIPT_PATH"
-            sudo chmod +x "$SCRIPT_PATH"
-        else
-            echo "Error: marzbackup.sh not found in repository."
-            exit 1
-        fi
-        
-        # Update other crucial files
-        sudo cp "$INSTALL_DIR/backup.py" "/opt/MarzBackup/backup.py"
-        sudo cp "$INSTALL_DIR/handlers.py" "/opt/MarzBackup/handlers.py"
-        sudo cp "$INSTALL_DIR/config.py" "/opt/MarzBackup/config.py"
-        
-        echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
-        echo "MarzBackup has been updated successfully."
-        
-        # Restart the service
-        marzbackup restart
-    fi
-}
-
 send_telegram_message() {
     message="$1"
     python3 -c "
@@ -196,23 +129,103 @@ status() {
     fi
 }
 
+get_current_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        version=$(jq -r '.installed_version' "$VERSION_FILE")
+        echo $version
+    else
+        echo "unknown"
+    fi
+}
+
+update() {
+    echo "Checking for updates..."
+    if [ ! -d "$INSTALL_DIR" ]; then
+        echo "MarzBackup is not installed. Please install it first."
+        exit 1
+    fi
+    
+    cd "$INSTALL_DIR"
+    
+    if [ ! -d ".git" ]; then
+        echo "Git repository not found. Initializing..."
+        git init
+        git remote add origin "$REPO_URL"
+    fi
+    
+    git fetch origin
+    
+    current_version=$(get_current_version)
+    if [ "$2" == "dev" ] || [ "$current_version" == "dev" ]; then
+        BRANCH="dev"
+        NEW_VERSION="dev"
+    else
+        BRANCH="main"
+        NEW_VERSION="stable"
+    fi
+    
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/$BRANCH)
+    
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "You are already using the latest $NEW_VERSION version."
+    else
+        echo "Updating MarzBackup to the latest $NEW_VERSION version..."
+        git reset --hard origin/$BRANCH
+        
+        # Update Python dependencies
+        pip3 install -r requirements.txt
+        
+        # Update marzbackup.sh
+        if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
+            sudo cp "$INSTALL_DIR/marzbackup.sh" "$0"
+            sudo chmod +x "$0"
+        else
+            echo "Error: marzbackup.sh not found in repository."
+            exit 1
+        fi
+        
+        # Update other crucial files
+        sudo cp "$INSTALL_DIR/backup.py" "/opt/MarzBackup/backup.py"
+        sudo cp "$INSTALL_DIR/handlers.py" "/opt/MarzBackup/handlers.py"
+        sudo cp "$INSTALL_DIR/config.py" "/opt/MarzBackup/config.py"
+        
+        echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
+        echo "MarzBackup has been updated successfully to $NEW_VERSION version."
+        
+        # Restart the service
+        marzbackup restart
+    fi
+}
+
 check_version() {
+    cd "$INSTALL_DIR" || { echo "Error: $INSTALL_DIR not found."; exit 1; }
+    
     if [ ! -f "$VERSION_FILE" ]; then
         echo "Version file not found. Unable to check version."
         return 1
     fi
     
-    CURRENT_VERSION=$(jq -r '.installed_version' "$VERSION_FILE")
+    CURRENT_VERSION=$(get_current_version)
     echo "Current installed version: $CURRENT_VERSION"
     
     # Check for updates
     git fetch origin --quiet
-    LATEST_VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-    
-    if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
-        echo "A new version ($LATEST_VERSION) is available. Use 'marzbackup update' to upgrade."
+    if [ "$CURRENT_VERSION" == "dev" ]; then
+        LATEST_VERSION=$(git rev-parse origin/dev)
+        CURRENT_COMMIT=$(git rev-parse HEAD)
+        if [ "$CURRENT_COMMIT" != "$LATEST_VERSION" ]; then
+            echo "A new dev version is available. Use 'marzbackup update dev' to upgrade."
+        else
+            echo "You are using the latest dev version."
+        fi
     else
-        echo "You are using the latest version."
+        LATEST_VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+        if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+            echo "A new version ($LATEST_VERSION) is available. Use 'marzbackup update' to upgrade."
+        else
+            echo "You are using the latest stable version."
+        fi
     fi
 }
 
