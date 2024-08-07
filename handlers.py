@@ -1,6 +1,7 @@
 import os
 import asyncio
 import subprocess
+import logging
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -49,7 +50,8 @@ async def handle_get_backup(message: types.Message):
         else:
             await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {stderr.decode()}")
     except Exception as e:
-        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+        logging.error(f"Error in backup process: {e}")
+        await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً لاگ‌ها را بررسی کنید.")
 
 @router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
