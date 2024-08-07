@@ -205,8 +205,8 @@ update_backup_cron() {
     # Remove previous cron job for backup
     (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
 
-    # Install new cron job for backup using flock to ensure only one instance runs
-    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
+    # Install new cron job for backup without using flock
+    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
 
     echo "Backup cron job updated. Backup will run every $backup_interval minutes."
 }
