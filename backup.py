@@ -76,7 +76,7 @@ def create_backup():
         return False
     
     # Zip the backup
-    zip_file = f"/root/marz-backup-{system}.zip"
+    zip_file = os.path.abspath(f"/root/marz-backup-{system}.zip")
     zip_command = f"zip -r {zip_file} {sql_backup_file}"
     result = subprocess.run(zip_command, shell=True, capture_output=True, text=True)
     
