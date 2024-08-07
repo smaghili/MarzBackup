@@ -41,8 +41,37 @@ save_config() {
     echo "Configuration saved successfully."
 }
 
+# Function to select version
+select_version() {
+    while true; do
+        echo "Which version would you like to install?"
+        echo "1) Stable (main branch)"
+        echo "2) Development (dev branch)"
+        read -p "Enter your choice (1 or 2): " version_choice
+        case $version_choice in
+            1)
+                BRANCH="main"
+                echo "Stable version (main branch) selected."
+                break
+                ;;
+            2)
+                BRANCH="dev"
+                echo "Development version (dev branch) selected."
+                break
+                ;;
+            *)
+                echo "Invalid choice. Please enter 1 or 2."
+                ;;
+        esac
+    done
+    echo "You have chosen to install the $BRANCH branch. Proceeding with installation..."
+}
+
 # Main installation process
 echo "Welcome to MarzBackup installation!"
+
+# Select version
+select_version
 
 # Get configuration information
 get_api_token
@@ -52,36 +81,55 @@ get_admin_chat_id
 save_config
 
 # Update package lists
+echo "Updating package lists..."
 sudo apt update
 
 # Install required packages
+echo "Installing required packages..."
 sudo apt install -y python3 python3-pip git
 
 # Clone or update the repository
 if [ -d "$INSTALL_DIR" ]; then
     echo "Updating existing MarzBackup installation..."
     cd "$INSTALL_DIR"
-    git fetch origin
-    git reset --hard origin/main
+    if git ls-remote --exit-code --heads origin $BRANCH; then
+        git fetch origin
+        git reset --hard origin/$BRANCH
+        echo "Successfully updated to the latest $BRANCH version."
+    else
+        echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
+        BRANCH="main"
+        git fetch origin
+        git reset --hard origin/$BRANCH
+    fi
 else
     echo "Performing fresh MarzBackup installation..."
-    sudo git clone "$REPO_URL" "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
+    if git ls-remote --exit-code --heads $REPO_URL $BRANCH; then
+        sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        echo "Successfully cloned the $BRANCH branch."
+    else
+        echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
+        BRANCH="main"
+        sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
 fi
 
 # Install Python dependencies
+echo "Installing Python dependencies..."
 pip3 install -r requirements.txt
 
 # Copy the marzbackup.sh script to /usr/local/bin and make it executable
+echo "Setting up MarzBackup command..."
 sudo cp "$INSTALL_DIR/marzbackup.sh" /usr/local/bin/marzbackup
 sudo chmod +x /usr/local/bin/marzbackup
 
-echo "Installation completed. Starting the bot in the foreground for testing..."
+echo "Installation completed. Starting the bot in the background..."
 
-# Start the bot in the foreground
-python3 "$INSTALL_DIR/main.py"
+# Start the bot in the background
+nohup python3 "$INSTALL_DIR/main.py" > "$LOG_FILE" 2>&1 &
 
-# If the bot starts successfully, it will continue running. 
-# The user can stop it with Ctrl+C and then start it in the background if desired.
-echo "If the bot started successfully, you can stop it with Ctrl+C."
-echo "To run the bot in the background, use: marzbackup start"
+echo "Bot is now running in the background."
+echo "You can check its status with 'marzbackup status'."
+echo "To view logs, use: tail -f $LOG_FILE"
