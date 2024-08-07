@@ -22,6 +22,20 @@ get_current_version() {
     fi
 }
 
+check_and_get_config() {
+    API_TOKEN=$(jq -r '.API_TOKEN // empty' "$CONFIG_FILE")
+    ADMIN_CHAT_ID=$(jq -r '.ADMIN_CHAT_ID // empty' "$CONFIG_FILE")
+
+    if [ -z "$API_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
+        echo "API_TOKEN or ADMIN_CHAT_ID is missing. Running setup..."
+        python3 "$INSTALL_DIR/setup.py"
+        if [ $? -ne 0 ]; then
+            echo "Setup failed. Please check the error messages and try again."
+            exit 1
+        fi
+    fi
+}
+
 update() {
     echo "Checking for updates..."
     current_version=$(get_current_version)
@@ -56,6 +70,8 @@ update() {
             git reset --hard origin/$BRANCH
             pip3 install -r requirements.txt
             
+            check_and_get_config
+            
             # Update marzbackup.sh
             if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
                 sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
@@ -81,18 +97,7 @@ start() {
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         
-        # Check if API_TOKEN and ADMIN_CHAT_ID are set in the config file
-        API_TOKEN=$(jq -r '.API_TOKEN // empty' "$CONFIG_FILE")
-        ADMIN_CHAT_ID=$(jq -r '.ADMIN_CHAT_ID // empty' "$CONFIG_FILE")
-
-        if [ -z "$API_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
-            echo "API_TOKEN or ADMIN_CHAT_ID is missing. Running setup..."
-            python3 setup.py
-            if [ $? -ne 0 ]; then
-                echo "Setup failed. Please check the error messages and try again."
-                exit 1
-            fi
-        fi
+        check_and_get_config
 
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
@@ -104,21 +109,31 @@ start() {
                 rm "$PID_FILE"
             fi
         fi
-        nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
-        sleep 2
-        if [ -f "$PID_FILE" ]; then
-            PID=$(cat "$PID_FILE")
-            if ps -p $PID > /dev/null; then
-                echo "Bot is running in the background. PID: $PID"
-                echo "You can check its status with 'marzbackup status'."
-                echo "To view logs, use: tail -f $LOG_FILE"
+        
+        echo "Running MarzBackup in foreground..."
+        python3 main.py
+        
+        if [ $? -eq 0 ]; then
+            echo "MarzBackup started successfully. Moving to background..."
+            nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
+            sleep 2
+            if [ -f "$PID_FILE" ]; then
+                PID=$(cat "$PID_FILE")
+                if ps -p $PID > /dev/null; then
+                    echo "Bot is running in the background. PID: $PID"
+                    echo "You can check its status with 'marzbackup status'."
+                    echo "To view logs, use: tail -f $LOG_FILE"
+                else
+                    echo "Failed to start the bot in background. Check logs for details."
+                    cat "$LOG_FILE"
+                fi
             else
-                echo "Failed to start the bot. Check logs for details."
+                echo "Failed to start the bot in background. PID file not created."
                 cat "$LOG_FILE"
             fi
         else
-            echo "Failed to start the bot. PID file not created."
-            cat "$LOG_FILE"
+            echo "Failed to start MarzBackup. Please check the logs for more information."
+            exit 1
         fi
     else
         echo "MarzBackup is not installed. Please install it first."
@@ -189,17 +204,39 @@ update_backup_cron() {
     local backup_interval=$(jq -r '.backup_interval_minutes' "$CONFIG_FILE")
     local cron_schedule=$(convert_to_cron $backup_interval)
     if [ $? -ne 0 ]; then
-        echo "ERROR: Invalid time interval. Please use intervals that divide evenly into hours."
+        echo "خطا: فاصله زمانی نامعتبر. لطفاً از فواصل زمانی استفاده کنید که به طور دقیق به ساعت تقسیم می‌شوند."
         return 1
     fi
     
-    # Remove existing crontab entry for backup
+    # حذف ورودی کرون تب قبلی برای پشتیبان‌گیری
     (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
     
-    # Install new crontab for backup with flock to ensure only one instance runs
+    # نصب کرون تب جدید برای پشتیبان‌گیری با استفاده از flock برای اطمینان از اجرای تنها یک نمونه
     (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
     
-    echo "Backup cron job updated. Backups will run every $backup_interval minutes."
+    echo "کرون جاب پشتیبان‌گیری به‌روزرسانی شد. پشتیبان‌گیری هر $backup_interval دقیقه یکبار اجرا خواهد شد."
+}
+
+uninstall_marzbackup() {
+    echo "Uninstalling MarzBackup..."
+    stop
+
+    # Remove cron jobs
+    (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
+    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
+
+    # Remove installation directory
+    sudo rm -rf "$INSTALL_DIR"
+    sudo rm -rf "$CONFIG_DIR"
+
+    # Remove log files
+    sudo rm -f "$LOG_FILE"
+    sudo rm -f "$USAGE_LOG_FILE"
+
+    # Remove script
+    sudo rm -f "$SCRIPT_PATH"
+
+    echo "MarzBackup has been uninstalled."
 }
 
 install_user_usage() {
@@ -286,28 +323,6 @@ install_user_usage() {
     
     echo "User usage tracking system installation completed."
     echo "Report interval set to every $report_interval minutes."
-}
-
-uninstall_marzbackup() {
-    echo "Uninstalling MarzBackup..."
-    stop
-
-    # Remove cron jobs
-    (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
-    (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup/hourlyReport.py") | crontab -
-
-    # Remove installation directory
-    sudo rm -rf "$INSTALL_DIR"
-    sudo rm -rf "$CONFIG_DIR"
-
-    # Remove log files
-    sudo rm -f "$LOG_FILE"
-    sudo rm -f "$USAGE_LOG_FILE"
-
-    # Remove script
-    sudo rm -f "$SCRIPT_PATH"
-
-    echo "MarzBackup has been uninstalled."
 }
 
 case "$1" in
