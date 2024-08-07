@@ -13,6 +13,11 @@ CONFIG_FILE="$CONFIG_DIR/config.json"
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 LOCK_FILE="/var/run/hourlyReport.lock"
 
+ensure_single_instance() {
+    pkill -f "python3 /opt/MarzBackup/main.py"
+    rm -f "$PID_FILE"
+}
+
 get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
@@ -37,6 +42,21 @@ check_and_get_config() {
 
 update() {
     echo "Checking for updates..."
+    if [ ! -d "$INSTALL_DIR" ]; then
+        echo "MarzBackup is not installed. Please install it first."
+        exit 1
+    fi
+    
+    cd "$INSTALL_DIR"
+    
+    if [ ! -d ".git" ]; then
+        echo "Git repository not found. Initializing..."
+        git init
+        git remote add origin "$REPO_URL"
+    fi
+    
+    git fetch origin
+    
     current_version=$(get_current_version)
     if [ "$2" == "dev" ]; then
         BRANCH="dev"
@@ -45,48 +65,39 @@ update() {
         BRANCH="main"
         NEW_VERSION="stable"
     elif [ -z "$2" ]; then
-        # If no version is specified, stay on the current branch
         BRANCH=$(git rev-parse --abbrev-ref HEAD)
         NEW_VERSION=$current_version
     else
         echo "Invalid version specified. Use 'dev' or 'stable'."
         exit 1
     fi
-
-    if [ -d "$INSTALL_DIR" ]; then
-        cd "$INSTALL_DIR"
-        git fetch origin
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse origin/$BRANCH)
-        
-        if [ "$LOCAL" = "$REMOTE" ]; then
-            echo "You are already using the latest $NEW_VERSION version."
-            exit 0
-        else
-            echo "Updating MarzBackup to the latest $NEW_VERSION version..."
-            stop
-            git reset --hard origin/$BRANCH
-            pip3 install -r requirements.txt
-            check_and_get_config
-
-            # Update marzbackup.sh
-            if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
-                sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
-                sudo chmod +x "$TEMP_SCRIPT"
-                echo "New version of marzbackup.sh downloaded. Applying update..."
-                sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
-                echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
-                echo "marzbackup.sh has been updated. Restarting with new version..."
-                exec "$SCRIPT_PATH"
-                start
-            else
-                echo "Error: marzbackup.sh not found in repository."
-                exit 1
-            fi
-        fi
+    
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/$BRANCH)
+    
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "You are already using the latest $NEW_VERSION version."
+        exit 0
     else
-        echo "MarzBackup is not installed. Please install it first."
-        exit 1
+        echo "Updating MarzBackup to the latest $NEW_VERSION version..."
+        ensure_single_instance
+        git reset --hard origin/$BRANCH
+        pip3 install -r requirements.txt
+        check_and_get_config
+        
+        # Update marzbackup.sh
+        if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
+            sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
+            sudo chmod +x "$TEMP_SCRIPT"
+            echo "New version of marzbackup.sh downloaded. Applying update..."
+            sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
+            echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
+            echo "marzbackup.sh has been updated. Restarting with new version..."
+            exec "$SCRIPT_PATH" start
+        else
+            echo "Error: marzbackup.sh not found in repository."
+            exit 1
+        fi
     fi
 }
 
@@ -95,40 +106,24 @@ start() {
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         check_and_get_config
+        ensure_single_instance
+        echo "Running MarzBackup in background..."
+        nohup python3 main.py > "$LOG_FILE" 2>&1 &
+        echo $! > "$PID_FILE"
+        sleep 2
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
             if ps -p $PID > /dev/null; then
-                echo "MarzBackup is already running. Use 'marzbackup restart' to restart it."
-                return
+                echo "Bot is running in the background. PID: $PID"
+                echo "You can check its status with 'marzbackup status'."
+                echo "To view logs, use: tail -f $LOG_FILE"
             else
-                echo "Stale PID file found. Removing it."
-                rm "$PID_FILE"
-            fi
-        fi
-        echo "Running MarzBackup in foreground..."
-        python3 main.py
-        if [ $? -eq 0 ]; then
-            echo "MarzBackup started successfully. Moving to background..."
-            nohup python3 main.py > "$LOG_FILE" 2>&1 &
-            echo $! > "$PID_FILE"
-            sleep 2
-            if [ -f "$PID_FILE" ]; then
-                PID=$(cat "$PID_FILE")
-                if ps -p $PID > /dev/null; then
-                    echo "Bot is running in the background. PID: $PID"
-                    echo "You can check its status with 'marzbackup status'."
-                    echo "To view logs, use: tail -f $LOG_FILE"
-                else
-                    echo "Failed to start the bot in background. Check logs for details."
-                    cat "$LOG_FILE"
-                fi
-            else
-                echo "Failed to start the bot in background. PID file not created."
+                echo "Failed to start the bot in background. Check logs for details."
                 cat "$LOG_FILE"
             fi
         else
-            echo "Failed to start MarzBackup. Please check the logs for more information."
-            exit 1
+            echo "Failed to start the bot in background. PID file not created."
+            cat "$LOG_FILE"
         fi
     else
         echo "MarzBackup is not installed. Please install it first."
@@ -138,14 +133,8 @@ start() {
 
 stop() {
     echo "Stopping MarzBackup..."
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        kill $PID
-        rm "$PID_FILE"
-        echo "MarzBackup stopped."
-    else
-        echo "MarzBackup is not running or PID file not found."
-    fi
+    ensure_single_instance
+    echo "MarzBackup stopped."
 }
 
 restart() {
@@ -214,7 +203,7 @@ update_backup_cron() {
 
 uninstall_marzbackup() {
     echo "Uninstalling MarzBackup..."
-    stop
+    ensure_single_instance
 
     # Remove cron jobs
     (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
