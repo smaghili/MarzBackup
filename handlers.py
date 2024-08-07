@@ -47,6 +47,10 @@ async def handle_get_backup(message: types.Message):
         stdout, stderr = await process.communicate()
         if process.returncode == 0:
             await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+            
+            # ارسال فایل بکاپ به کاربر
+            backup_file_path = stdout.decode().strip()
+            await message.answer_document(types.InputFile(backup_file_path))
         else:
             await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {stderr.decode()}")
     except Exception as e:
