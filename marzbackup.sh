@@ -45,7 +45,8 @@ update() {
         BRANCH="main"
         NEW_VERSION="stable"
     elif [ -z "$2" ]; then
-        BRANCH=$([ "$current_version" == "dev" ] && echo "dev" || echo "main")
+        # If no version is specified, stay on the current branch
+        BRANCH=$(git rev-parse --abbrev-ref HEAD)
         NEW_VERSION=$current_version
     else
         echo "Invalid version specified. Use 'dev' or 'stable'."
@@ -55,14 +56,14 @@ update() {
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
         git fetch origin
-        git checkout $BRANCH
         LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse @{u})
-        if [ "$LOCAL" = "$REMOTE" ] && [ "$NEW_VERSION" == "$current_version" ]; then
+        REMOTE=$(git rev-parse origin/$BRANCH)
+        
+        if [ "$LOCAL" = "$REMOTE" ]; then
             echo "You are already using the latest $NEW_VERSION version."
             exit 0
         else
-            echo "Updating MarzBackup to $NEW_VERSION version..."
+            echo "Updating MarzBackup to the latest $NEW_VERSION version..."
             stop
             git reset --hard origin/$BRANCH
             pip3 install -r requirements.txt
@@ -205,8 +206,8 @@ update_backup_cron() {
     # Remove previous cron job for backup
     (crontab -l 2>/dev/null | grep -v "/usr/bin/python3 /opt/MarzBackup/backup.py") | crontab -
 
-    # Install new cron job for backup without using flock
-    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
+    # Install new cron job for backup using flock to ensure only one instance runs
+    (crontab -l 2>/dev/null; echo "$cron_schedule /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> $LOG_FILE 2>&1") | crontab -
 
     echo "Backup cron job updated. Backup will run every $backup_interval minutes."
 }
