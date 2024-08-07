@@ -91,7 +91,7 @@ async def main():
     dp.startup.register(on_startup)
 
     # Start polling
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, timeout=60)
 
 if __name__ == '__main__':
     asyncio.run(main())
