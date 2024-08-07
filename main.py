@@ -3,7 +3,7 @@ import logging
 import sys
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import load_config
+from config import load_config, save_config
 from handlers import register_handlers
 
 # Configure logging
@@ -29,28 +29,28 @@ async def validate_config():
 
     try:
         # Validate and update db_container
-        if config.get("db_container") != DB_CONTAINER:
-            config["db_container"] = DB_CONTAINER
+        if config.get("db_container") != config.get("db_container"):
+            config["db_container"] = config.get("db_container")
             changes_made = True
-            logging.info(f"Updated db_container to {DB_CONTAINER}")
+            logging.info(f"Updated db_container to {config.get('db_container')}")
 
         # Validate and update db_password
-        if config.get("db_password") != DB_PASSWORD:
-            config["db_password"] = DB_PASSWORD
+        if config.get("db_password") != config.get("db_password"):
+            config["db_password"] = config.get("db_password")
             changes_made = True
             logging.info("Updated db_password")
 
         # Validate and update db_name
-        if config.get("db_name") != DB_NAME:
-            config["db_name"] = DB_NAME
+        if config.get("db_name") != config.get("db_name"):
+            config["db_name"] = config.get("db_name")
             changes_made = True
-            logging.info(f"Updated db_name to {DB_NAME}")
+            logging.info(f"Updated db_name to {config.get('db_name')}")
 
         # Validate and update db_type
-        if config.get("db_type") != DB_TYPE:
-            config["db_type"] = DB_TYPE
+        if config.get("db_type") != config.get("db_type"):
+            config["db_type"] = config.get("db_type")
             changes_made = True
-            logging.info(f"Updated db_type to {DB_TYPE}")
+            logging.info(f"Updated db_type to {config.get('db_type')}")
 
         # Ensure report_interval exists in config
         if "report_interval" not in config:
