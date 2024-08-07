@@ -14,8 +14,17 @@ USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 LOCK_FILE="/var/run/hourlyReport.lock"
 
 ensure_single_instance() {
-    pkill -9 -f "python3 /opt/MarzBackup/main.py"
-    rm -f "$PID_FILE"
+    if [ -f "$PID_FILE" ]; then
+        OLD_PID=$(cat "$PID_FILE")
+        if ps -p $OLD_PID > /dev/null 2>&1; then
+            echo "MarzBackup is already running. Stopping the old instance..."
+            kill $OLD_PID
+            sleep 2
+        fi
+    fi
+    if [ -f "$LOCK_FILE" ]; then
+        rm -f "$LOCK_FILE"
+    fi
 }
 
 get_current_version() {
@@ -126,21 +135,16 @@ start() {
         check_and_get_config
         echo "Running MarzBackup in background..."
         nohup python3 main.py > "$LOG_FILE" 2>&1 &
-        echo $! > "$PID_FILE"
+        NEW_PID=$!
+        echo $NEW_PID > "$PID_FILE"
         sleep 2
-        if [ -f "$PID_FILE" ]; then
-            PID=$(cat "$PID_FILE")
-            if ps -p $PID > /dev/null; then
-                echo "Bot is running in the background. PID: $PID"
-                echo "You can check its status with 'marzbackup status'."
-                echo "To view logs, use: tail -f $LOG_FILE"
-                send_telegram_message "ربات MarzBackup با موفقیت راه‌اندازی شد!"
-            else
-                echo "Failed to start the bot in background. Check logs for details."
-                cat "$LOG_FILE"
-            fi
+        if ps -p $NEW_PID > /dev/null 2>&1; then
+            echo "Bot is running in the background. PID: $NEW_PID"
+            echo "You can check its status with 'marzbackup status'."
+            echo "To view logs, use: tail -f $LOG_FILE"
+            send_telegram_message "ربات MarzBackup با موفقیت راه‌اندازی شد!"
         else
-            echo "Failed to start the bot in background. PID file not created."
+            echo "Failed to start the bot in background. Check logs for details."
             cat "$LOG_FILE"
         fi
     else
