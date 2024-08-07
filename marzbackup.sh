@@ -101,6 +101,23 @@ update() {
     fi
 }
 
+send_telegram_message() {
+    message="$1"
+    python3 -c "
+import asyncio
+from aiogram import Bot
+from config import load_config
+
+async def send_message():
+    config = load_config()
+    bot = Bot(token=config['API_TOKEN'])
+    await bot.send_message(chat_id=config['ADMIN_CHAT_ID'], text='$message')
+    await bot.session.close()
+
+asyncio.run(send_message())
+"
+}
+
 start() {
     echo "Starting MarzBackup..."
     ensure_single_instance
@@ -117,6 +134,7 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
+                send_telegram_message "ربات MarzBackup با موفقیت راه‌اندازی شد!"
             else
                 echo "Failed to start the bot in background. Check logs for details."
                 cat "$LOG_FILE"
@@ -141,6 +159,7 @@ restart() {
     stop
     sleep 2
     start
+    send_telegram_message "ربات MarzBackup با موفقیت راه‌اندازی مجدد شد!"
 }
 
 status() {
@@ -333,6 +352,7 @@ install_user_usage() {
 case "$1" in
     update)
         update $@
+        send_telegram_message "ربات MarzBackup با موفقیت به‌روزرسانی شد!"
         ;;
     start)
         if [ "$2" == "user-usage" ]; then
