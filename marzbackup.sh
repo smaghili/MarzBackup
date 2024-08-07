@@ -228,12 +228,19 @@ uninstall_marzbackup() {
     echo "Uninstalling MarzBackup..."
     
     # Stop all related processes
-    pkill -f "/opt/MarzBackup/main.py"
-    pkill -f "/opt/MarzBackup/hourlyReport.py"
-    pkill -f "/opt/MarzBackup/backup.py"
+    pkill -f "/opt/MarzBackup/main.py" 2>/dev/null
+    pkill -f "/opt/MarzBackup/hourlyReport.py" 2>/dev/null
+    pkill -f "/opt/MarzBackup/backup.py" 2>/dev/null
+    pkill -f "aiogram" 2>/dev/null  # Kill any running Telegram bot processes
     
     # Kill any remaining Python processes related to MarzBackup
-    pgrep -f "python.*MarzBackup" | xargs kill -9
+    pids=$(pgrep -f "python.*MarzBackup")
+    if [ ! -z "$pids" ]; then
+        echo "Stopping remaining MarzBackup processes..."
+        kill $pids 2>/dev/null
+        sleep 2
+        kill -9 $pids 2>/dev/null
+    fi
     
     # Remove cron jobs
     (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup") | crontab -
@@ -255,17 +262,32 @@ uninstall_marzbackup() {
     sudo rm -f "/tmp/marzbackup.lock"
     sudo rm -f "/tmp/marzbackup_bot.lock"
     
-    # Remove script
+    # Remove script and any potential symlinks
     sudo rm -f "$SCRIPT_PATH"
-    
-    # Remove any remaining symbolic links
     sudo find /usr/local/bin -lname '*MarzBackup*' -delete
     
     # Remove any potential systemd service
-    sudo systemctl stop marzbackup.service 2>/dev/null
-    sudo systemctl disable marzbackup.service 2>/dev/null
+    if systemctl is-active --quiet marzbackup.service; then
+        sudo systemctl stop marzbackup.service
+        sudo systemctl disable marzbackup.service
+    fi
     sudo rm -f /etc/systemd/system/marzbackup.service
     sudo systemctl daemon-reload
+    
+    # Remove any potential startup scripts
+    sudo rm -f /etc/init.d/marzbackup
+    sudo update-rc.d marzbackup remove 2>/dev/null
+    
+    # Remove any potential Docker containers (if used)
+    if command -v docker &> /dev/null; then
+        docker stop $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
+        docker rm $(docker ps -a | grep marzbackup | awk '{print $1}') 2>/dev/null
+    fi
+    
+    # Remove Python packages installed by MarzBackup
+    if command -v pip3 &> /dev/null; then
+        pip3 uninstall -y aiogram pyyaml pytz 2>/dev/null
+    fi
     
     echo "MarzBackup has been completely uninstalled."
     
