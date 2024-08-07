@@ -46,14 +46,25 @@ async def handle_get_backup(message: types.Message):
         )
         stdout, stderr = await process.communicate()
         
+        logging.info(f"Backup process returned: stdout={stdout.decode().strip()}, stderr={stderr.decode().strip()}")
+        
         if process.returncode == 0:
             backup_file_path = stdout.decode().strip()
+            logging.info(f"Backup file path: {backup_file_path}")
+            
             if os.path.exists(backup_file_path):
-                await message.answer_document(
-                    types.FSInputFile(backup_file_path),
-                    caption="فایل پشتیبان با موفقیت ایجاد و ارسال شد."
-                )
-                logging.info(f"Backup file sent: {backup_file_path}")
+                file_size = os.path.getsize(backup_file_path)
+                logging.info(f"Backup file exists. Size: {file_size} bytes")
+                
+                try:
+                    await message.answer_document(
+                        types.FSInputFile(backup_file_path),
+                        caption="فایل پشتیبان با موفقیت ایجاد و ارسال شد."
+                    )
+                    logging.info("Document sent successfully")
+                except Exception as send_error:
+                    logging.error(f"Error sending document: {str(send_error)}")
+                    await message.answer(f"خطا در ارسال فایل: {str(send_error)}")
             else:
                 await message.answer("فایل پشتیبان ایجاد شد اما در مسیر مورد نظر یافت نشد.")
                 logging.error(f"Backup file not found: {backup_file_path}")
