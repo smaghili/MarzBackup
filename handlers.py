@@ -45,27 +45,26 @@ async def handle_get_backup(message: types.Message):
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
+        
         if process.returncode == 0:
             backup_file_path = stdout.decode().strip()
-            logging.info(f"Backup file created at: {backup_file_path}")
-            
             if os.path.exists(backup_file_path):
-                try:
-                    await message.answer_document(types.FSInputFile(backup_file_path))
-                    await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
-                except Exception as e:
-                    logging.error(f"Error sending backup file: {e}")
-                    await message.answer("خطا در ارسال فایل پشتیبان. لطفاً لاگ‌ها را بررسی کنید.")
+                await message.answer_document(
+                    types.FSInputFile(backup_file_path),
+                    caption="فایل پشتیبان با موفقیت ایجاد و ارسال شد."
+                )
+                logging.info(f"Backup file sent: {backup_file_path}")
             else:
-                logging.error(f"Backup file not found at {backup_file_path}")
                 await message.answer("فایل پشتیبان ایجاد شد اما در مسیر مورد نظر یافت نشد.")
+                logging.error(f"Backup file not found: {backup_file_path}")
         else:
-            error_message = stderr.decode()
-            logging.error(f"Error in backup process: {error_message}")
-            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {error_message}")
+            error_message = stderr.decode().strip()
+            await message.answer(f"خطا در ایجاد پشتیبان: {error_message}")
+            logging.error(f"Backup creation failed: {error_message}")
+    
     except Exception as e:
-        logging.error(f"Error in backup process: {e}")
         await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً لاگ‌ها را بررسی کنید.")
+        logging.error(f"Error in backup process: {str(e)}")
 
 @router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
