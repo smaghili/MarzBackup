@@ -89,24 +89,30 @@ update() {
         exit 0
     else
         echo "Updating MarzBackup to the latest $NEW_VERSION version..."
-        ensure_single_instance
         git reset --hard origin/$BRANCH
+        
+        # Update Python dependencies
         pip3 install -r requirements.txt
-        check_and_get_config
         
         # Update marzbackup.sh
         if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
-            sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
-            sudo chmod +x "$TEMP_SCRIPT"
-            echo "New version of marzbackup.sh downloaded. Applying update..."
-            sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
-            echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
-            echo "marzbackup.sh has been updated. Restarting with new version..."
-            exec "$SCRIPT_PATH" start
+            sudo cp "$INSTALL_DIR/marzbackup.sh" "$SCRIPT_PATH"
+            sudo chmod +x "$SCRIPT_PATH"
         else
             echo "Error: marzbackup.sh not found in repository."
             exit 1
         fi
+        
+        # Update other crucial files
+        sudo cp "$INSTALL_DIR/backup.py" "/opt/MarzBackup/backup.py"
+        sudo cp "$INSTALL_DIR/handlers.py" "/opt/MarzBackup/handlers.py"
+        sudo cp "$INSTALL_DIR/config.py" "/opt/MarzBackup/config.py"
+        
+        echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
+        echo "MarzBackup has been updated successfully."
+        
+        # Restart the service
+        marzbackup restart
     fi
 }
 
