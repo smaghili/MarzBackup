@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
 
-# Установка логирования
+# Logging configuration
 logging.basicConfig(filename='/var/log/marzbackup.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -17,7 +17,7 @@ router = Router()
 
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:")
+    await message.reply("به ربات پشتیبان‌گیری خوش آمدید! برای شروع فرآیند پشتیبان‌گیری، از دکمه 'پشتیبان‌گیری فوری' استفاده کنید.")
 
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
@@ -55,20 +55,20 @@ async def handle_get_backup(message: types.Message):
                     logging.info("Document sent successfully")
                 except Exception as send_error:
                     logging.error(f"Error sending document: {str(send_error)}")
-                    await message.answer(f"خطا در ارسال فایل: {str(send_error)}")
+                    await message.answer("خطا در ارسال فایل. لطفاً با پشتیبانی تماس بگیرید.")
             else:
-                await message.answer(f"فایل پشتیبان در مسیر {backup_file_path} یافت نشد.")
                 logging.error(f"Backup file not found: {backup_file_path}")
+                await message.answer("خطا در ایجاد فایل پشتیبان. لطفاً با پشتیبانی تماس بگیرید.")
         else:
             error_message = stderr.decode().strip()
-            await message.answer(f"خطا در ایجاد پشتیبان: {error_message}")
             logging.error(f"Backup creation failed: {error_message}")
+            await message.answer("خطا در ایجاد پشتیبان. لطفاً با پشتیبانی تماس بگیرید.")
     
     except Exception as e:
-        await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً لاگ‌ها را بررسی کنید.")
-        logging.error(f"Error in backup process: {str(e)}")
+        logging.exception(f"Error in backup process: {str(e)}")
+        await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً با پشتیبانی تماس بگیرید.")
 
-# Добавьте здесь другие обработчики, если они есть
+# Add other handlers here if needed
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
