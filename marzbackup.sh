@@ -232,6 +232,9 @@ uninstall_marzbackup() {
     pkill -f "/opt/MarzBackup/hourlyReport.py"
     pkill -f "/opt/MarzBackup/backup.py"
     
+    # Kill any remaining Python processes related to MarzBackup
+    pgrep -f "python.*MarzBackup" | xargs kill -9
+    
     # Remove cron jobs
     (crontab -l 2>/dev/null | grep -v "/opt/MarzBackup") | crontab -
     
@@ -250,12 +253,19 @@ uninstall_marzbackup() {
     # Remove lock files
     sudo rm -f "$LOCK_FILE"
     sudo rm -f "/tmp/marzbackup.lock"
+    sudo rm -f "/tmp/marzbackup_bot.lock"
     
     # Remove script
     sudo rm -f "$SCRIPT_PATH"
     
     # Remove any remaining symbolic links
     sudo find /usr/local/bin -lname '*MarzBackup*' -delete
+    
+    # Remove any potential systemd service
+    sudo systemctl stop marzbackup.service 2>/dev/null
+    sudo systemctl disable marzbackup.service 2>/dev/null
+    sudo rm -f /etc/systemd/system/marzbackup.service
+    sudo systemctl daemon-reload
     
     echo "MarzBackup has been completely uninstalled."
     
