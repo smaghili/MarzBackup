@@ -83,48 +83,8 @@ async def process_schedule(message: types.Message, state: FSMContext):
             await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
-    except Exception as e:
-        await message.answer(f"خطا در پردازش زمانبندی: {e}")
     finally:
         await state.clear()
-
-
-async def update_cron_job(minutes):
-    cron_schedule = convert_to_cron(minutes)
-    if not cron_schedule:
-        raise ValueError("Invalid time interval. Please use intervals that divide evenly into hours.")
-
-    # Remove existing cron job
-    remove_cmd = "(crontab -l 2>/dev/null | grep -v '/usr/bin/python3 /opt/MarzBackup/backup.py') | crontab -"
-    process = await asyncio.create_subprocess_shell(
-        remove_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    await process.communicate()
-
-    # Add new cron job
-    new_cron_job = f"{cron_schedule} /usr/bin/flock -n /tmp/marzbackup.lock /usr/bin/python3 /opt/MarzBackup/backup.py >> /var/log/marzbackup.log 2>&1"
-    add_cmd = f"(crontab -l 2>/dev/null; echo \"{new_cron_job}\") | crontab -"
-    process = await asyncio.create_subprocess_shell(
-        add_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    await process.communicate()
-
-def convert_to_cron(minutes):
-    if minutes == 60:
-        return "0 * * * *"
-    elif minutes < 60:
-        return f"*/{minutes} * * * *"
-    else:
-        hours = minutes // 60
-        remaining_minutes = minutes % 60
-        if remaining_minutes == 0:
-            return f"0 */{hours} * * *"
-        else:
-            return None
 
 @router.message(F.text == "بازیابی پشتیبان")
 async def request_sql_file(message: types.Message, state: FSMContext):
