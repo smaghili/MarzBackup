@@ -182,6 +182,36 @@ status() {
     fi
 }
 
+uninstall() {
+    echo "Uninstalling MarzBackup..."
+
+    # Stop all running .sh scripts in the installation directory
+    pkill -f "$INSTALL_DIR/.*\.sh"
+    pkill -f "$INSTALL_DIR/.*\.py"
+
+    # Remove installation and configuration directories
+    if [ -d "$INSTALL_DIR" ]; then
+        rm -rf "$INSTALL_DIR"
+        echo "Removed installation directory: $INSTALL_DIR"
+    fi
+    if [ -d "$CONFIG_DIR" ]; then
+        rm -rf "$CONFIG_DIR"
+        echo "Removed configuration directory: $CONFIG_DIR"
+    fi
+
+    # Remove script and log files
+    if [ -f "$SCRIPT_PATH" ]; then
+        rm "$SCRIPT_PATH"
+        echo "Removed script: $SCRIPT_PATH"
+    fi
+    if [ -f "$LOG_FILE" ]; then
+        rm "$LOG_FILE"
+        echo "Removed log file: $LOG_FILE"
+    fi
+
+    echo "MarzBackup has been completely uninstalled."
+}
+
 start_user_usage() {
     echo "Starting user usage tracking system..."
     nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
@@ -305,6 +335,9 @@ case "$1" in
             echo "Usage: marzbackup install user-usage"
             exit 1
         fi
+        ;;
+    uninstall)
+        uninstall
         ;;
     *)
         echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage}"
