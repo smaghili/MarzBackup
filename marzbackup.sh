@@ -186,10 +186,10 @@ status() {
 uninstall() {
     echo "Uninstalling MarzBackup..."
 
-    # Stop all running .sh and .py file in the installation directory
+    # Stop all running .sh and .py files in the installation directory
     pkill -f "$INSTALL_DIR/.*\.sh"
     pkill -f "$INSTALL_DIR/.*\.py"
-    echo "Stop and Kill all running .sh and .py file in the installation directory"
+    echo "Stopped and killed all running .sh and .py files in the installation directory."
 
     # Remove installation and configuration directories
     if [ -d "$INSTALL_DIR" ]; then
@@ -210,7 +210,11 @@ uninstall() {
         rm "$LOG_FILE"
         echo "Removed log file: $LOG_FILE"
     fi
+
+    # Attempt to clear the command hash table
+    echo "Clearing command hash table..."
     hash -r
+
     echo "MarzBackup has been completely uninstalled."
 }
 
