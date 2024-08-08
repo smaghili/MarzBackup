@@ -2,12 +2,12 @@ import os
 import asyncio
 import subprocess
 import logging
-from aiogram import Router, F, types
+from aiogram import Bot, Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
-from config import save_config, load_config
+from config import save_config, load_config, ADMIN_CHAT_ID
 
 # Define states
 class BackupStates(StatesGroup):
@@ -30,6 +30,14 @@ keyboard = types.ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+
+async def send_startup_message(bot: Bot, operation_type: str):
+    if operation_type == "update":
+        message = "ربات MarzBackup با موفقیت به‌روزرسانی و راه‌اندازی شد!"
+    else:
+        message = "ربات MarzBackup با موفقیت راه‌اندازی شد!"
+    
+    await bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
 
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
