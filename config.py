@@ -1,6 +1,7 @@
 import json
 import os
 import yaml
+import sys
 
 CONFIG_FILE_PATH = '/opt/marzbackup/config.json'
 VERSION_FILE_PATH = '/opt/marzbackup/version.json'
@@ -42,11 +43,20 @@ def get_installed_version():
 
 def get_or_ask(key, prompt):
     config = load_config()
-    if key not in config:
-        value = input(prompt).strip()
-        config[key] = value
-        save_config(config)
-    return config[key]
+    while True:
+        if key in config:
+            return config[key]
+        try:
+            value = input(prompt).strip()
+            if value:
+                config[key] = value
+                save_config(config)
+                return value
+            else:
+                print("Value cannot be empty. Please try again.")
+        except EOFError:
+            print("Unable to read input. Please run the script in an interactive environment.")
+            sys.exit(1)
 
 def get_db_info(system):
     if system == "marzban":
@@ -153,16 +163,6 @@ def update_config():
         updated = True
         print(f"Updated db_type to {db_type}")
 
-    # Remove old system-specific keys
-    old_keys = [
-        "marzban_db_container", "marzban_db_password", "marzban_db_name",
-        "marzneshin_db_container", "marzneshin_db_password", "marzneshin_db_name"
-    ]
-    for old_key in old_keys:
-        if old_key in config:
-            del config[old_key]
-            updated = True
-
     if updated:
         save_config(config)
         print("Config file updated with correct values")
@@ -197,6 +197,5 @@ DB_TYPE = config.get('db_type', '')
 # Add this line at the end of the file
 INSTALLED_VERSION = get_installed_version()
 
-# Run update_config at the start of the program
 if __name__ == "__main__":
     update_config()
