@@ -1,14 +1,13 @@
 import os
 import asyncio
 import subprocess
-import yaml
+import logging
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
-from backup import handle_backup, create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -38,19 +37,57 @@ async def send_welcome(message: types.Message):
 
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
+    await message.answer("در حال تهیه پشتیبان... لطفاً صبر کنید.")
     try:
-        success = await handle_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
+        process = await asyncio.create_subprocess_shell(
+            "/usr/bin/python3 /opt/MarzBackup/backup.py",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        logging.info(f"Backup process returned: stdout={stdout.decode().strip()}, stderr={stderr.decode().strip()}")
+        
+        if process.returncode == 0:
+            # Extract the backup file path
+            for line in stdout.decode().strip().split('\n'):
+                if line.startswith("BACKUP_PATH:"):
+                    backup_file_path = line.split(":", 1)[1].strip()
+                    break
+            else:
+                raise ValueError("Backup path not found in output")
+
+            logging.info(f"Extracted backup file path: {backup_file_path}")
+            
+            if os.path.exists(backup_file_path):
+                file_size = os.path.getsize(backup_file_path)
+                logging.info(f"Backup file exists. Size: {file_size} bytes")
+                
+                try:
+                    await message.answer_document(
+                        types.FSInputFile(backup_file_path),
+                        caption="فایل پشتیبان با موفقیت ایجاد و ارسال شد."
+                    )
+                    logging.info("Document sent successfully")
+                except Exception as send_error:
+                    logging.error(f"Error sending document: {str(send_error)}")
+                    await message.answer(f"خطا در ارسال فایل: {str(send_error)}")
+            else:
+                await message.answer(f"فایل پشتیبان در مسیر {backup_file_path} یافت نشد.")
+                logging.error(f"Backup file not found: {backup_file_path}")
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
+            error_message = stderr.decode().strip()
+            await message.answer(f"خطا در ایجاد پشتیبان: {error_message}")
+            logging.error(f"Backup creation failed: {error_message}")
+    
     except Exception as e:
-        await message.answer(f"خطا در پشتیبان‌گیری: {e}")
+        logging.error(f"Error in backup process: {str(e)}")
+        await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد. لطفاً لاگ‌ها را بررسی کنید.")
 
 @router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
-    await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
+    await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '10' برای هر 10 دقیقه یکبار).")
 
 @router.message(BackupStates.waiting_for_schedule)
 async def process_schedule(message: types.Message, state: FSMContext):
@@ -61,22 +98,23 @@ async def process_schedule(message: types.Message, state: FSMContext):
         
         config = load_config()
         config["backup_interval_minutes"] = minutes
-        config["interval_change_time"] = asyncio.get_event_loop().time()
         save_config(config)
         
-        await state.clear()
-        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        # Run the update_backup_cron command automatically after setting the interval
+        update_backup_cron_command = "marzbackup update_backup_interval"
+        process = await asyncio.create_subprocess_shell(
+            update_backup_cron_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         
-        # Perform an immediate backup
-        success = await create_and_send_backup(message.bot)
-        if success:
-            await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
+        if process.returncode == 0:
+            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
+            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
-    except Exception as e:
-        await message.answer(f"خطا در پردازش زمانبندی: {e}")
     finally:
         await state.clear()
 
@@ -109,16 +147,16 @@ async def process_sql_file(message: types.Message, state: FSMContext):
         await message.bot.download_file(file.file_path, file_path)
 
         # Extract database information from config
-        container_name = config.get("db_container")
+        db_container = config.get("db_container")
         db_password = config.get("db_password")
         db_name = config.get("db_name")
 
-        if not container_name or not db_password or not db_name:
+        if not db_container or not db_password or not db_name:
             await message.answer("اطلاعات پایگاه داده در فایل کانفیگ یافت نشد.")
             return
 
         # Restore the database
-        restore_command = f"docker exec -i {container_name} mariadb -u root -p{db_password} {db_name} < {file_path}"
+        restore_command = f"docker exec -i {db_container} mariadb -u root -p{db_password} {db_name} < {file_path}"
         process = await asyncio.create_subprocess_shell(
             restore_command,
             stdout=asyncio.subprocess.PIPE,
@@ -152,10 +190,22 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         config['report_interval'] = interval
         save_config(config)
         
-        await state.clear()
-        await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت.")
+        # Restart hourlyReport.py
+        process = await asyncio.create_subprocess_shell(
+            "marzbackup restart user-usage",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            await message.answer(f"زمان گزارش مصرف کاربران به {interval} دقیقه تغییر یافت و سیستم گزارش‌گیری مجدداً راه‌اندازی شد.")
+        else:
+            await message.answer(f"خطا در تنظیم زمان گزارش: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
+    finally:
+        await state.clear()
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
