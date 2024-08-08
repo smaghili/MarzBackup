@@ -1,14 +1,23 @@
 #!/bin/bash
 
 REPO_URL="https://github.com/smaghili/MarzBackup.git"
+
 SCRIPT_PATH="/usr/local/bin/marzbackup"
+
 TEMP_SCRIPT="/tmp/marzbackup_new.sh"
+
 INSTALL_DIR="/opt/MarzBackup"
+
 CONFIG_DIR="/opt/marzbackup"
+
 LOG_FILE="/var/log/marzbackup.log"
+
 PID_FILE="/var/run/marzbackup.pid"
+
 VERSION_FILE="$CONFIG_DIR/version.json"
+
 CONFIG_FILE="$CONFIG_DIR/config.json"
+
 USAGE_PID_FILE="/var/run/marzbackup_usage.pid"
 
 get_current_version() {
@@ -16,14 +25,13 @@ get_current_version() {
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
         echo $version
     else
-        echo "stable"  # Default to stable if version file doesn't exist
+        echo "stable" # Default to stable if version file doesn't exist
     fi
 }
 
 update() {
     echo "Checking for updates..."
     current_version=$(get_current_version)
-    
     if [ "$2" == "dev" ]; then
         BRANCH="dev"
         NEW_VERSION="dev"
@@ -44,7 +52,6 @@ update() {
         git checkout $BRANCH
         LOCAL=$(git rev-parse HEAD)
         REMOTE=$(git rev-parse @{u})
-
         if [ "$LOCAL" = "$REMOTE" ] && [ "$NEW_VERSION" == "$current_version" ]; then
             echo "You are already using the latest $NEW_VERSION version."
             exit 0
@@ -53,7 +60,6 @@ update() {
             stop
             git reset --hard origin/$BRANCH
             pip3 install -r requirements.txt
-            
             # Update marzbackup.sh
             if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
                 sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
@@ -78,7 +84,6 @@ start() {
     echo "Starting MarzBackup..."
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR"
-        
         # Run setup.py if API_TOKEN or ADMIN_CHAT_ID is missing
         if ! grep -q "API_TOKEN" "$CONFIG_FILE" || ! grep -q "ADMIN_CHAT_ID" "$CONFIG_FILE"; then
             python3 setup.py
@@ -87,7 +92,6 @@ start() {
                 exit 1
             fi
         fi
-        
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
             if ps -p $PID > /dev/null; then
@@ -106,7 +110,6 @@ start() {
                 echo "Bot is running in the background. PID: $PID"
                 echo "You can check its status with 'marzbackup status'."
                 echo "To view logs, use: tail -f $LOG_FILE"
-                
                 # Start user usage tracking if it's installed
                 if jq -e '.user_usage_installed == true' "$CONFIG_FILE" > /dev/null; then
                     start_user_usage
@@ -135,7 +138,6 @@ stop() {
     else
         echo "MarzBackup is not running or PID file not found."
     fi
-
     stop_user_usage
 }
 
@@ -167,7 +169,6 @@ status() {
             echo "No log file found."
         fi
     fi
-
     # Check status of user usage tracking
     if [ -f "$USAGE_PID_FILE" ]; then
         PID=$(cat "$USAGE_PID_FILE")
@@ -244,7 +245,6 @@ restart_user_usage() {
 
 install_user_usage() {
     echo "Installing user usage tracking system..."
-    
     if [ -f "$USAGE_PID_FILE" ]; then
         PID=$(cat "$USAGE_PID_FILE")
         if ps -p $PID > /dev/null; then
@@ -255,51 +255,42 @@ install_user_usage() {
             rm "$USAGE_PID_FILE"
         fi
     fi
-    
     # Check if jq is installed
     if ! command -v jq &> /dev/null; then
         echo "jq is not installed. Installing jq..."
         sudo apt-get update && sudo apt-get install -y jq
     fi
-    
     # Load config and update it
     python3 "$INSTALL_DIR/config.py"
-    
     # Read database information directly from config.json
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "Error: Config file not found at $CONFIG_FILE"
         exit 1
     fi
-    
     config=$(cat "$CONFIG_FILE")
     db_container=$(echo $config | jq -r '.db_container')
     db_password=$(echo $config | jq -r '.db_password')
     db_name=$(echo $config | jq -r '.db_name')
     db_type=$(echo $config | jq -r '.db_type')
-
     # Validate database information
     if [ -z "$db_container" ] || [ -z "$db_password" ] || [ -z "$db_name" ] || [ -z "$db_type" ]; then
         echo "Error: Missing database configuration. Please check your config.json file."
         exit 1
     fi
-
     # Check if the database container is running
     if ! docker ps | grep -q "$db_container"; then
         echo "Error: Database container $db_container is not running."
         exit 1
     fi
-
     # Execute SQL script
     echo "Setting up database structures using $db_type..."
-    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < "$INSTALL_DIR/hourlyUsage.sql"
+    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < "$INSTALL_DIR/hourlyUsage.sql""
     if [ $? -ne 0 ]; then
         echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
         exit 1
     fi
-    
     # Set a flag in the config file to indicate that user usage tracking is installed
     jq '. + {"user_usage_installed": true}' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
-    
     start_user_usage
 }
 
@@ -340,7 +331,7 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage}"
+        echo "Usage: marzbackup {update [dev|stable]|start|stop [user-usage]|restart [user-usage]|status|install user-usage|uninstall}"
         exit 1
         ;;
 esac
