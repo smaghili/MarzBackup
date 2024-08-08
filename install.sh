@@ -92,18 +92,22 @@ sudo apt install -y python3 python3-pip git
 if [ -d "$INSTALL_DIR" ]; then
     echo "Updating existing MarzBackup installation..."
     cd "$INSTALL_DIR"
+    echo "Attempting to switch to branch: $BRANCH"
     if git ls-remote --exit-code --heads origin $BRANCH; then
         git fetch origin
+        git checkout $BRANCH
         git reset --hard origin/$BRANCH
         echo "Successfully updated to the latest $BRANCH version."
     else
         echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
         BRANCH="main"
         git fetch origin
+        git checkout $BRANCH
         git reset --hard origin/$BRANCH
     fi
 else
     echo "Performing fresh MarzBackup installation..."
+    echo "Attempting to clone branch: $BRANCH"
     if git ls-remote --exit-code --heads $REPO_URL $BRANCH; then
         sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
