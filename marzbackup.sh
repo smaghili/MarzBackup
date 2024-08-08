@@ -93,7 +93,7 @@ update() {
             sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
             echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
             echo "marzbackup.sh has been updated. Restarting with new version..."
-            exec "$SCRIPT_PATH" start
+            exec "$SCRIPT_PATH" start update
         else
             echo "Error: marzbackup.sh not found in repository."
             exit 1
@@ -108,7 +108,7 @@ start() {
         cd "$INSTALL_DIR"
         check_and_get_config
         echo "Running MarzBackup in background..."
-        nohup python3 main.py > "$LOG_FILE" 2>&1 &
+        nohup python3 main.py start > "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         sleep 2
         if [ -f "$PID_FILE" ]; then
