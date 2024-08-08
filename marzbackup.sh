@@ -210,9 +210,6 @@ uninstall() {
         rm "$LOG_FILE"
         echo "Removed log file: $LOG_FILE"
     fi
-
-    # Attempt to clear the command hash table
-    echo "Clearing command hash table..."
     hash -r
 
     echo "MarzBackup has been completely uninstalled."
