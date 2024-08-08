@@ -9,7 +9,6 @@ INSTALL_DIR="/opt/MarzBackup"
 LOG_FILE="/var/log/marzbackup.log"
 VERSION_FILE="$CONFIG_DIR/version.json"
 SCRIPT_PATH="/usr/local/bin/marzbackup"
-TEMP_SCRIPT="/tmp/marzbackup_new.sh"
 
 # Function to get and validate API_TOKEN
 get_api_token() {
@@ -70,65 +69,27 @@ select_version() {
     echo "You have chosen to install the $BRANCH branch. Proceeding with installation..."
 }
 
-# Function to get current version
-get_current_version() {
-    if [ -f "$VERSION_FILE" ]; then
-        version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
-        echo $version
-    else
-        echo "stable" # Default to stable if version file doesn't exist
-    fi
-}
-
-# Function to update the installation
-update() {
-    echo "Checking for updates..."
-    current_version=$(get_current_version)
-    if [ "$1" == "dev" ]; then
-        BRANCH="dev"
-        NEW_VERSION="dev"
-    elif [ "$1" == "stable" ]; then
-        BRANCH="main"
-        NEW_VERSION="stable"
-    elif [ -z "$1" ]; then
-        BRANCH=$([ "$current_version" == "dev" ] && echo "dev" || echo "main")
-        NEW_VERSION=$current_version
-    else
-        echo "Invalid version specified. Use 'dev' or 'stable'."
-        exit 1
-    fi
-
+# Function to clone or update the repository
+clone_or_update_repo() {
     if [ -d "$INSTALL_DIR" ]; then
+        echo "Updating existing MarzBackup installation..."
         cd "$INSTALL_DIR"
         git fetch origin
         git checkout $BRANCH
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse @{u})
-        if [ "$LOCAL" = "$REMOTE" ] && [ "$NEW_VERSION" == "$current_version" ]; then
-            echo "You are already using the latest $NEW_VERSION version."
-            exit 0
-        else
-            echo "Updating MarzBackup to $NEW_VERSION version..."
-            stop
-            git reset --hard origin/$BRANCH
-            pip3 install -r requirements.txt
-            # Update marzbackup.sh
-            if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
-                sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
-                sudo chmod +x "$TEMP_SCRIPT"
-                echo "New version of marzbackup.sh downloaded. Applying update..."
-                sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
-                echo "{\"installed_version\": \"$NEW_VERSION\"}" > "$VERSION_FILE"
-                echo "marzbackup.sh has been updated. Restarting with new version..."
-                exec "$SCRIPT_PATH" start
-            else
-                echo "Error: marzbackup.sh not found in repository."
-                exit 1
-            fi
-        fi
+        git reset --hard origin/$BRANCH
+        echo "Successfully updated to the latest $BRANCH version."
     else
-        echo "MarzBackup is not installed. Please install it first."
-        exit 1
+        echo "Performing fresh MarzBackup installation..."
+        if git ls-remote --exit-code --heads $REPO_URL $BRANCH; then
+            sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+            cd "$INSTALL_DIR"
+            echo "Successfully cloned the $BRANCH branch."
+        else
+            echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
+            BRANCH="main"
+            sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+            cd "$INSTALL_DIR"
+        fi
     fi
 }
 
@@ -154,7 +115,10 @@ echo "Installing required packages..."
 sudo apt install -y python3 python3-pip git
 
 # Clone or update the repository
-update $BRANCH
+clone_or_update_repo
+
+# Update the version file
+echo "{\"installed_version\": \"$BRANCH\"}" | sudo tee "$VERSION_FILE" > /dev/null
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
