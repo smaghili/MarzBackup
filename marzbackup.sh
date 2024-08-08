@@ -154,6 +154,17 @@ case "$1" in
     update)
         update $@
         ;;
+    uninstall)
+        if [ "$2" == "user-usage" ]; then
+            uninstall_user_usage
+        elif [ -z "$2" ]; then
+            uninstall_marzbackup
+        else
+            echo "Unknown uninstall option: $2"
+            echo "Usage: marzbackup uninstall [user-usage]"
+            exit 1
+        fi
+        ;;
     start)
         start
         ;;
@@ -167,7 +178,7 @@ case "$1" in
         status
         ;;
     *)
-        echo "Usage: marzbackup {update [dev|stable]|start|stop|restart|status}"
+        echo "Usage: marzbackup {update [dev|stable]|start [user-usage]|stop [user-usage]|restart [user-usage]|status [user-usage]|install user-usage|uninstall [user-usage]|update_backup_interval}"
         exit 1
         ;;
 esac
