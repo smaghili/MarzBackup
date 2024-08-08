@@ -210,7 +210,7 @@ uninstall() {
         rm "$LOG_FILE"
         echo "Removed log file: $LOG_FILE"
     fi
-
+    hash -r
     echo "MarzBackup has been completely uninstalled."
 }
 
