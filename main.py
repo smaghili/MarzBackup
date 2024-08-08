@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import load_config, save_config, API_TOKEN, ADMIN_CHAT_ID
@@ -38,7 +39,6 @@ lock_fd = acquire_lock()
 
 async def validate_config():
     config = load_config()
-    # Add any config validation logic here if needed
     save_config(config)
 
 async def on_startup(bot: Bot):
@@ -48,13 +48,8 @@ async def on_startup(bot: Bot):
 
 async def main():
     try:
-        # Register all handlers
         register_handlers(dp)
-
-        # Set up startup hook
         dp.startup.register(on_startup)
-
-        # Start polling
         await dp.start_polling(bot, timeout=60)
     finally:
         release_lock(lock_fd)
