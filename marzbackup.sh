@@ -186,9 +186,10 @@ status() {
 uninstall() {
     echo "Uninstalling MarzBackup..."
 
-    # Stop all running .sh scripts in the installation directory
+    # Stop all running .sh and .py file in the installation directory
     pkill -f "$INSTALL_DIR/.*\.sh"
     pkill -f "$INSTALL_DIR/.*\.py"
+    echo "Stop and Kill all running .sh and .py file in the installation directory"
 
     # Remove installation and configuration directories
     if [ -d "$INSTALL_DIR" ]; then
