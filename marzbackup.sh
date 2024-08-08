@@ -108,7 +108,7 @@ start() {
         cd "$INSTALL_DIR"
         check_and_get_config
         echo "Running MarzBackup in background..."
-        nohup python3 main.py start > "$LOG_FILE" 2>&1 &
+        nohup python3 main.py "$1" > "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         sleep 2
         if [ -f "$PID_FILE" ]; then
@@ -140,7 +140,7 @@ stop() {
 restart() {
     stop
     sleep 2
-    start
+    start restart
 }
 
 status() {
@@ -316,7 +316,7 @@ case "$1" in
         if [ "$2" == "user-usage" ]; then
             start_user_usage
         else
-            start
+            start start
         fi
         ;;
     stop)
