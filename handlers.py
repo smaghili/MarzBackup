@@ -17,7 +17,7 @@ router = Router()
 
 @router.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("به ربات پشتیبان‌گیری خوش آمدید! برای شروع فرآیند پشتیبان‌گیری، از دکمه 'پشتیبان‌گیری فوری' استفاده کنید.")
+    await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard")
 
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
