@@ -16,17 +16,19 @@ get_current_version() {
         version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
         echo $version
     else
-        echo "stable" # Default to stable if version file doesn't exist
+        echo "none" # No version installed
     fi
 }
 
-# Function to check and update to the latest version
-check_and_update_version() {
+# Function to check if the latest version is installed
+is_latest_version_installed() {
     current_version=$(get_current_version)
     if [ "$current_version" == "dev" ]; then
         BRANCH="dev"
-    else
+    elif [ "$current_version" == "main" ]; then
         BRANCH="main"
+    else
+        return 1 # No version installed
     fi
 
     cd "$INSTALL_DIR"
@@ -36,48 +38,10 @@ check_and_update_version() {
 
     if [ "$LOCAL" = "$REMOTE" ]; then
         echo "The latest version of MarzBackup is already installed."
-        restart_bot_if_stopped
+        return 0
     else
-        echo "Updating MarzBackup to the latest $BRANCH version..."
-        git reset --hard origin/$BRANCH
-        pip3 install -r requirements.txt
-        # Update marzbackup.sh
-        if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
-            sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
-            sudo chmod +x "$TEMP_SCRIPT"
-            echo "New version of marzbackup.sh downloaded. Applying update..."
-            sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
-            echo "{\"installed_version\": \"$BRANCH\"}" > "$VERSION_FILE"
-            echo "marzbackup.sh has been updated. Restarting with new version..."
-            restart_bot
-        else
-            echo "Error: marzbackup.sh not found in repository."
-            exit 1
-        fi
+        return 1
     fi
-}
-
-# Function to restart the bot if it is stopped
-restart_bot_if_stopped() {
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ! ps -p $PID > /dev/null; then
-            echo "Bot is not running. Restarting..."
-            start_bot
-        else
-            echo "Bot is already running."
-        fi
-    else
-        echo "PID file not found. Starting bot..."
-        start_bot
-    fi
-}
-
-# Function to start the bot
-start_bot() {
-    cd "$INSTALL_DIR"
-    nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
-    echo "Bot started with PID: $(cat $PID_FILE)"
 }
 
 # Function to read existing configuration
@@ -155,6 +119,11 @@ select_version() {
 # Main installation process
 echo "Welcome to MarzBackup installation!"
 
+# Check if the latest version is already installed
+if [ -d "$INSTALL_DIR" ] && is_latest_version_installed; then
+    exit 0
+fi
+
 # Select version
 select_version
 
@@ -215,6 +184,3 @@ nohup python3 "$INSTALL_DIR/main.py" > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
 echo "Bot is now running in the background."
 echo "You can check its status with 'marzbackup status'."
 echo "To view logs, use: tail -f $LOG_FILE"
-
-# Check and update to the latest version
-check_and_update_version
