@@ -10,6 +10,19 @@ LOG_FILE="/var/log/marzbackup.log"
 VERSION_FILE="$CONFIG_DIR/version.json"
 SCRIPT_PATH="/usr/local/bin/marzbackup"
 
+# Function to read existing configuration
+read_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        API_TOKEN=$(jq -r '.API_TOKEN' "$CONFIG_FILE")
+        ADMIN_CHAT_ID=$(jq -r '.ADMIN_CHAT_ID' "$CONFIG_FILE")
+        if [ -n "$API_TOKEN" ] && [ -n "$ADMIN_CHAT_ID" ]; then
+            echo "Existing configuration found."
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Function to get and validate API_TOKEN
 get_api_token() {
     while true; do
@@ -99,12 +112,12 @@ echo "Welcome to MarzBackup installation!"
 # Select version
 select_version
 
-# Get configuration information
-get_api_token
-get_admin_chat_id
-
-# Save configuration
-save_config
+# Read existing configuration or prompt for new input
+if ! read_config; then
+    get_api_token
+    get_admin_chat_id
+    save_config
+fi
 
 # Update package lists
 echo "Updating package lists..."
