@@ -1,14 +1,13 @@
 import os
 import asyncio
 import subprocess
-import yaml
 from aiogram import Bot
 from aiogram.types import FSInputFile
-from config import load_config, ADMIN_CHAT_ID, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
+from config import load_config, ADMIN_CHAT_ID, DB_CONTAINER, DB_PASSWORD
 
 config = load_config()
 
-async def create_and_send_backup(bot):
+async def create_and_send_backup(bot: Bot):
     try:
         if not ADMIN_CHAT_ID:
             raise ValueError("ADMIN_CHAT_ID is not set in the config file")
@@ -59,7 +58,11 @@ async def create_and_send_backup(bot):
         if process.returncode != 0:
             raise RuntimeError(f"Error in backup script: {stderr.decode()}")
         
-        backup_command = f"zip -r /root/marz-backup-{system}.zip {' '.join(backup_dirs)} {mysql_backup_dir}/*"
+        # Exclude specific files from the backup
+        backup_command = (
+            f"zip -r /root/marz-backup-{system}.zip {' '.join(backup_dirs)} {mysql_backup_dir}/* "
+            f"-x {mysql_backup_dir}/#mysql50#db-backup.sql -x {mysql_backup_dir}/marz-backup.sh"
+        )
         process = await asyncio.create_subprocess_shell(backup_command)
         await process.communicate()
         
