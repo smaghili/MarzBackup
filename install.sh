@@ -23,20 +23,12 @@ get_current_version() {
 # Function to check if the latest version is installed
 is_latest_version_installed() {
     current_version=$(get_current_version)
-    if [ "$current_version" == "dev" ]; then
-        BRANCH="dev"
-    elif [ "$current_version" == "main" ]; then
-        BRANCH="main"
-    else
-        return 1 # No version installed
-    fi
-
     cd "$INSTALL_DIR"
     git fetch origin
     LOCAL=$(git rev-parse HEAD)
     REMOTE=$(git rev-parse origin/$BRANCH)
 
-    if [ "$LOCAL" = "$REMOTE" ]; then
+    if [ "$LOCAL" = "$REMOTE" ] && [ "$current_version" == "$BRANCH" ]; then
         echo "The latest version of $BRANCH MarzBackup is already installed."
         return 0
     else
@@ -119,13 +111,13 @@ select_version() {
 # Main installation process
 echo "Welcome to MarzBackup installation!"
 
+# Select version
+select_version
+
 # Check if the latest version is already installed
 if [ -d "$INSTALL_DIR" ] && is_latest_version_installed; then
     exit 0
 fi
-
-# Select version
-select_version
 
 # Read existing configuration or prompt for new input
 if ! read_config; then
