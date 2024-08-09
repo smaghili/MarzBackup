@@ -1,14 +1,84 @@
 #!/bin/bash
 
-set -e
-
 CONFIG_DIR="/opt/marzbackup"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 REPO_URL="https://github.com/smaghili/MarzBackup.git"
 INSTALL_DIR="/opt/MarzBackup"
 LOG_FILE="/var/log/marzbackup.log"
 VERSION_FILE="$CONFIG_DIR/version.json"
+PID_FILE="/var/run/marzbackup.pid"
 SCRIPT_PATH="/usr/local/bin/marzbackup"
+TEMP_SCRIPT="/tmp/marzbackup_new.sh"
+
+# Function to get the current installed version
+get_current_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        version=$(grep -o '"installed_version": "[^"]*' "$VERSION_FILE" | grep -o '[^"]*$')
+        echo $version
+    else
+        echo "stable" # Default to stable if version file doesn't exist
+    fi
+}
+
+# Function to check and update to the latest version
+check_and_update_version() {
+    current_version=$(get_current_version)
+    if [ "$current_version" == "dev" ]; then
+        BRANCH="dev"
+    else
+        BRANCH="main"
+    fi
+
+    cd "$INSTALL_DIR"
+    git fetch origin
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/$BRANCH)
+
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "The latest version of MarzBackup is already installed."
+        restart_bot_if_stopped
+    else
+        echo "Updating MarzBackup to the latest $BRANCH version..."
+        git reset --hard origin/$BRANCH
+        pip3 install -r requirements.txt
+        # Update marzbackup.sh
+        if [ -f "$INSTALL_DIR/marzbackup.sh" ]; then
+            sudo cp "$INSTALL_DIR/marzbackup.sh" "$TEMP_SCRIPT"
+            sudo chmod +x "$TEMP_SCRIPT"
+            echo "New version of marzbackup.sh downloaded. Applying update..."
+            sudo mv "$TEMP_SCRIPT" "$SCRIPT_PATH"
+            echo "{\"installed_version\": \"$BRANCH\"}" > "$VERSION_FILE"
+            echo "marzbackup.sh has been updated. Restarting with new version..."
+            restart_bot
+        else
+            echo "Error: marzbackup.sh not found in repository."
+            exit 1
+        fi
+    fi
+}
+
+# Function to restart the bot if it is stopped
+restart_bot_if_stopped() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ! ps -p $PID > /dev/null; then
+            echo "Bot is not running. Restarting..."
+            start_bot
+        else
+            echo "Bot is already running."
+        fi
+    else
+        echo "PID file not found. Starting bot..."
+        start_bot
+    fi
+}
+
+# Function to start the bot
+start_bot() {
+    cd "$INSTALL_DIR"
+    nohup python3 main.py > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
+    echo "Bot started with PID: $(cat $PID_FILE)"
+}
 
 # Function to read existing configuration
 read_config() {
@@ -82,30 +152,6 @@ select_version() {
     echo "You have chosen to install the $BRANCH branch. Proceeding with installation..."
 }
 
-# Function to clone or update the repository
-clone_or_update_repo() {
-    if [ -d "$INSTALL_DIR" ]; then
-        echo "Updating existing MarzBackup installation..."
-        cd "$INSTALL_DIR"
-        git fetch origin
-        git checkout $BRANCH
-        git reset --hard origin/$BRANCH
-        echo "Successfully updated to the latest $BRANCH version."
-    else
-        echo "Performing fresh MarzBackup installation..."
-        if git ls-remote --exit-code --heads $REPO_URL $BRANCH; then
-            sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
-            cd "$INSTALL_DIR"
-            echo "Successfully cloned the $BRANCH branch."
-        else
-            echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
-            BRANCH="main"
-            sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
-            cd "$INSTALL_DIR"
-        fi
-    fi
-}
-
 # Main installation process
 echo "Welcome to MarzBackup installation!"
 
@@ -128,7 +174,26 @@ echo "Installing required packages..."
 sudo apt install -y python3 python3-pip git
 
 # Clone or update the repository
-clone_or_update_repo
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Updating existing MarzBackup installation..."
+    cd "$INSTALL_DIR"
+    git fetch origin
+    git checkout $BRANCH
+    git reset --hard origin/$BRANCH
+    echo "Successfully updated to the latest $BRANCH version."
+else
+    echo "Performing fresh MarzBackup installation..."
+    if git ls-remote --exit-code --heads $REPO_URL $BRANCH; then
+        sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        echo "Successfully cloned the $BRANCH branch."
+    else
+        echo "Error: The $BRANCH branch does not exist. Falling back to main branch."
+        BRANCH="main"
+        sudo git clone -b $BRANCH "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
+fi
 
 # Update the version file
 echo "{\"installed_version\": \"$BRANCH\"}" | sudo tee "$VERSION_FILE" > /dev/null
@@ -145,8 +210,11 @@ sudo chmod +x /usr/local/bin/marzbackup
 echo "Installation completed. Starting the bot in the background..."
 
 # Start the bot in the background
-nohup python3 "$INSTALL_DIR/main.py" > "$LOG_FILE" 2>&1 &
+nohup python3 "$INSTALL_DIR/main.py" > "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
 
 echo "Bot is now running in the background."
 echo "You can check its status with 'marzbackup status'."
 echo "To view logs, use: tail -f $LOG_FILE"
+
+# Check and update to the latest version
+check_and_update_version
