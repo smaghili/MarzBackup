@@ -37,7 +37,7 @@ is_latest_version_installed() {
     REMOTE=$(git rev-parse origin/$BRANCH)
 
     if [ "$LOCAL" = "$REMOTE" ]; then
-        echo "The latest version of MarzBackup is already installed."
+        echo "The latest version of $BRANCH MarzBackup is already installed."
         return 0
     else
         return 1
