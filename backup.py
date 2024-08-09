@@ -1,108 +1,95 @@
-#!/usr/bin/env python3
 import os
-import sys
-import fcntl
-import logging
-from datetime import datetime
+import asyncio
 import subprocess
-from config import load_config
+import yaml
+from aiogram import Bot
+from aiogram.types import FSInputFile
+from config import load_config, ADMIN_CHAT_ID, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
 
-# Logging configuration
-logging.basicConfig(filename='/var/log/marzbackup.log', level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+config = load_config()
 
-# Lock file path
-LOCK_FILE = '/tmp/marzbackup.lock'
-
-def acquire_lock():
-    global lock_file
+async def create_and_send_backup(bot):
     try:
-        lock_file = open(LOCK_FILE, 'w')
-        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True
-    except IOError:
-        return False
+        if not ADMIN_CHAT_ID:
+            raise ValueError("ADMIN_CHAT_ID is not set in the config file")
 
-def release_lock():
-    global lock_file
-    fcntl.lockf(lock_file, fcntl.LOCK_UN)
-    lock_file.close()
-    os.remove(LOCK_FILE)
+        # Check if zip is installed
+        if not subprocess.run(['which', 'zip'], capture_output=True, text=True).stdout.strip():
+            raise RuntimeError("zip is not installed. Please install it using 'apt-get install zip'")
 
-def get_system_type():
-    marzban_dir = subprocess.getoutput("find /opt /root -type d -iname 'marzban' -print -quit")
-    marzneshin_dir = "/var/lib/marzneshin"
-    if marzban_dir:
-        return "marzban"
-    elif os.path.isdir(marzneshin_dir):
-        return "marzneshin"
-    else:
-        return None
-
-def create_backup():
-    logging.info("Starting backup process")
-    config = load_config()
-    
-    # Extract database information from config
-    db_container = config.get("db_container")
-    db_password = config.get("db_password")
-    db_name = config.get("db_name")
-    db_type = config.get("db_type", "mysql")  # Default to mysql if not specified
-    
-    if not db_container or not db_password or not db_name:
-        logging.error("Database information not found in config file.")
-        return False
-    
-    system = get_system_type()
-    if not system:
-        logging.error("Neither Marzban nor Marzneshin installation found.")
-        return False
-    
-    # Create backup directory if it doesn't exist
-    backup_dir = f"/var/lib/{system}/mysql/db-backup"
-    os.makedirs(backup_dir, exist_ok=True)
-    
-    # Generate backup file name
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sql_backup_file = f"{backup_dir}/backup_{timestamp}.sql"
-    
-    # Create backup
-    dump_command = "mariadb-dump" if db_type == "mariadb" else "mysqldump"
-    backup_command = f"docker exec {db_container} {dump_command} -u root -p{db_password} {db_name} > {sql_backup_file}"
-    result = subprocess.run(backup_command, shell=True, capture_output=True, text=True)
-    
-    if result.returncode != 0:
-        logging.error(f"Database backup failed: {result.stderr}")
-        return False
-    
-    # Zip the backup
-    zip_file = os.path.abspath(f"/root/marz-backup-{system}.zip")
-    zip_command = f"zip -r {zip_file} {sql_backup_file}"
-    result = subprocess.run(zip_command, shell=True, capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        logging.info(f"Backup created successfully: {zip_file}")
-        print(f"BACKUP_PATH:{zip_file}")
-        return True
-    else:
-        logging.error(f"Zip creation failed: {result.stderr}")
-        return False
-
-def main():
-    if not acquire_lock():
-        logging.info("Another instance is running. Exiting.")
-        sys.exit(0)
-    
-    try:
-        success = create_backup()
-        if success:
-            logging.info("Backup process completed successfully")
+        marzban_dir = subprocess.getoutput("find /opt /root -type d -iname 'marzban' -print -quit")
+        marzneshin_dir = "/var/lib/marzneshin"
+        if marzban_dir:
+            system = "marzban"
+            backup_dirs = ["/opt/marzban"]
+            mysql_backup_dir = f"/var/lib/{system}/mysql/db-backup"
+        elif os.path.isdir(marzneshin_dir):
+            system = "marzneshin"
+            backup_dirs = ["/etc/opt/marzneshin", "/var/lib/marznode"]
+            mysql_backup_dir = "/var/lib/marzneshin/mysql/db-backup"
         else:
-            logging.error("Backup process failed")
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text="No Marzban or Marzneshin directory found.")
+            return False
+
+        os.makedirs(mysql_backup_dir, exist_ok=True)
+        
+        backup_script = f"""
+        #!/bin/bash
+        USER="root"
+        PASSWORD="{DB_PASSWORD}"
+        databases=$(mariadb -h 127.0.0.1 --user=$USER --password=$PASSWORD -e "SHOW DATABASES;" | tr -d "| " | grep -v Database)
+        for db in $databases; do
+            if [[ "$db" != "information_schema" ]] && [[ "$db" != "mysql" ]] && [[ "$db" != "performance_schema" ]] && [[ "$db" != "sys" ]] ; then
+                echo "Dumping database: $db"
+                mariadb-dump -h 127.0.0.1 --force --opt --user=$USER --password=$PASSWORD --databases $db > /var/lib/mysql/db-backup/$db.sql
+            fi
+        done
+        """
+        
+        with open(f"{mysql_backup_dir}/marz-backup.sh", "w") as f:
+            f.write(backup_script)
+        os.chmod(f"{mysql_backup_dir}/marz-backup.sh", 0o755)
+        
+        process = await asyncio.create_subprocess_shell(
+            f"docker exec {DB_CONTAINER} bash -c '/var/lib/mysql/db-backup/marz-backup.sh'",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            raise RuntimeError(f"Error in backup script: {stderr.decode()}")
+        
+        backup_command = f"zip -r /root/marz-backup-{system}.zip {' '.join(backup_dirs)} {mysql_backup_dir}/*"
+        process = await asyncio.create_subprocess_shell(backup_command)
+        await process.communicate()
+        
+        process = await asyncio.create_subprocess_shell(f"zip -ur /root/marz-backup-{system}.zip {mysql_backup_dir}/*.sql")
+        await process.communicate()
+        
+        process = await asyncio.create_subprocess_shell(f"rm -rf {mysql_backup_dir}/*")
+        await process.communicate()
+        
+        caption = f"Backup of {system.capitalize()}\nCreated by @sma16719\nhttps://github.com/smaghili/MarzBackup"
+        backup_file = FSInputFile(f"/root/marz-backup-{system}.zip")
+        await bot.send_document(chat_id=ADMIN_CHAT_ID, document=backup_file, caption=caption)
+        
+        print(f"{system.capitalize()} backup completed and sent successfully.")
+        return True
     except Exception as e:
-        logging.exception("An error occurred during backup")
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"An error occurred during the backup process: {str(e)}")
+        print(f"An error occurred during the backup process: {str(e)}")
+        return False
+
+async def main():
+    bot = Bot(token=config.get('API_TOKEN'))
+    try:
+        success = await create_and_send_backup(bot)
+        if success:
+            print("Backup process completed successfully.")
+        else:
+            print("Backup process failed.")
     finally:
-        release_lock()
+        await bot.session.close()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
