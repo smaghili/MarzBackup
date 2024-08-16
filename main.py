@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import sys
+import subprocess
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters.command import Command
 from config import load_config, save_config, DB_NAME, DB_CONTAINER, DB_PASSWORD, DB_TYPE
 from handlers import register_handlers
-from backup import create_and_send_backup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -25,6 +25,19 @@ if not API_TOKEN or not ADMIN_CHAT_ID:
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+async def create_and_send_backup():
+    try:
+        result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
+        if result.returncode == 0:
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text="پشتیبان‌گیری با موفقیت انجام شد.")
+            return True
+        else:
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {result.stderr}")
+            return False
+    except Exception as e:
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {str(e)}")
+        return False
 
 async def schedule_backups():
     last_backup_time = datetime.now()
@@ -44,7 +57,7 @@ async def schedule_backups():
             
             if time_since_last_backup >= backup_interval:
                 logging.info("Initiating backup...")
-                success = await create_and_send_backup(bot)
+                success = await create_and_send_backup()
                 if success:
                     last_backup_time = current_time
                     logging.info("Backup completed successfully.")
