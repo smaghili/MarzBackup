@@ -23,9 +23,10 @@ router = Router()
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
         [
-            types.KeyboardButton(text="بازیابی بکاپ")
-            types.KeyboardButton(text="بکاپ فوری"),
-            types.KeyboardButton(text="فاصله زمانی بکاپ"),   
+            types.KeyboardButton(text="بازیابی بکاپ"),
+            types.KeyboardButton(text="فاصله زمانی بکاپ"),
+            types.KeyboardButton(text="بکاپ فوری")
+        ,   
         ],
         [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
     ],
@@ -36,7 +37,7 @@ keyboard = types.ReplyKeyboardMarkup(
 async def send_welcome(message: types.Message):
     await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
 
-@router.message(F.text == "پشتیبان‌گیری فوری")
+@router.message(F.text == "بکاپ فوری")
 async def handle_get_backup(message: types.Message):
     try:
         result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
@@ -47,7 +48,7 @@ async def handle_get_backup(message: types.Message):
     except Exception as e:
         await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
-@router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
+@router.message(F.text == "فاصله زمانی بکاپ")
 async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
     await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
@@ -84,7 +85,7 @@ async def process_schedule(message: types.Message, state: FSMContext):
     finally:
         await state.clear()
 
-@router.message(F.text == "بازیابی پشتیبان")
+@router.message(F.text == "بازیابی بکاپ")
 async def request_sql_file(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_sql_file)
     await message.answer("لطفاً فایل SQL پشتیبان را ارسال کنید.")
