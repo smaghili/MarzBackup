@@ -185,7 +185,6 @@ async def process_report_interval(message: types.Message, state: FSMContext):
 async def show_user_usage(message: types.Message):
     logging.info("Starting show_user_usage function")
     try:
-        # Use subprocess.run instead of asyncio.create_subprocess_exec
         result = subprocess.run(['node', '/root/table.js'], 
                                 capture_output=True, 
                                 text=True, 
@@ -193,8 +192,11 @@ async def show_user_usage(message: types.Message):
         
         logging.info("Table generation completed")
         
+        # Add large emojis to make the output more prominent
+        formatted_output = f"🔍 <b>User Usage Report</b> 🔍\n\n<pre>{result.stdout.strip()}</pre>"
+        
         # Send the table as a message
-        await message.answer(f"<pre>{result.stdout.strip()}</pre>", parse_mode=ParseMode.HTML)
+        await message.answer(formatted_output, parse_mode=ParseMode.HTML)
     except subprocess.CalledProcessError as e:
         error_message = f"خطا در تولید جدول: {e.stderr}"
         logging.error(error_message)
