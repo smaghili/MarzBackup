@@ -216,27 +216,18 @@ uninstall() {
 }
 
 start_user_usage() {
-    echo "Starting user usage tracking system..."
-    nohup python3 "$INSTALL_DIR/hourlyReport.py" > "$LOG_FILE" 2>&1 &
-    echo $! > "$USAGE_PID_FILE"
-    echo "User usage tracking system started."
+    echo "Setting up user usage tracking cron job..."
+    # Remove any existing cron job for hourlyReport.py
+    crontab -l | grep -v "$INSTALL_DIR/hourlyReport.py" | crontab -
+    # Add new cron job to run every 5 minutes
+    (crontab -l 2>/dev/null; echo "*/5 * * * * python3 $INSTALL_DIR/hourlyReport.py >> $LOG_FILE 2>&1") | crontab -
+    echo "User usage tracking cron job set up to run every 5 minutes."
 }
 
 stop_user_usage() {
-    echo "Stopping user usage tracking system..."
-    if [ -f "$USAGE_PID_FILE" ]; then
-        PID=$(cat "$USAGE_PID_FILE")
-        if ps -p $PID > /dev/null; then
-            kill $PID
-            rm "$USAGE_PID_FILE"
-            echo "User usage tracking system stopped."
-        else
-            echo "User usage tracking system is not running, but PID file exists. Removing stale PID file."
-            rm "$USAGE_PID_FILE"
-        fi
-    else
-        echo "User usage tracking system is not running."
-    fi
+    echo "Removing user usage tracking cron job..."
+    crontab -l | grep -v "$INSTALL_DIR/hourlyReport.py" | crontab -
+    echo "User usage tracking cron job removed."
 }
 
 restart_user_usage() {
