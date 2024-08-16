@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
+from aiogram.enums import ParseMode  # Import ParseMode from aiogram.enums
 from config import save_config, load_config
 
 # Configure logging
@@ -193,7 +194,7 @@ async def show_user_usage(message: types.Message):
         logging.info("Table generation completed")
         
         # Send the table as a message
-        await message.answer(f"<pre>{result.stdout.strip()}</pre>", parse_mode=types.ParseMode.HTML)
+        await message.answer(f"<pre>{result.stdout.strip()}</pre>", parse_mode=ParseMode.HTML)
     except subprocess.CalledProcessError as e:
         error_message = f"خطا در تولید جدول: {e.stderr}"
         logging.error(error_message)
