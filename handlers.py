@@ -7,7 +7,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
-from backup import create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -38,11 +37,11 @@ async def send_welcome(message: types.Message):
 @router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
     try:
-        success = await create_and_send_backup(message.bot)
-        if success:
+        result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
+        if result.returncode == 0:
             await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
         else:
-            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
+            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {result.stderr}")
     except Exception as e:
         await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
@@ -74,11 +73,11 @@ async def process_schedule(message: types.Message, state: FSMContext):
             await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
             
             # Perform an immediate backup
-            success = await create_and_send_backup(message.bot)
-            if success:
+            result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
+            if result.returncode == 0:
                 await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
             else:
-                await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
+                await message.answer(f"خطایی در فرآیند پشتیبان‌گیری فوری رخ داد: {result.stderr}")
         else:
             await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
