@@ -75,13 +75,6 @@ async def process_schedule(message: types.Message, state: FSMContext):
         update_cron_job(minutes)
         
         await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
-        
-        # Perform an immediate backup
-        result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
-        if result.returncode == 0:
-            await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
-        else:
-            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری فوری رخ داد: {result.stderr}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
