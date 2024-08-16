@@ -291,7 +291,7 @@ install_user_usage() {
         echo "Error: SQL file not found at $SQL_FILE"
         exit 1
     fi
-    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < $SQL_FILE" 2>> "$LOG_FILE"
+    cat "$SQL_FILE" | docker exec -i "$db_container" $db_type -u root -p"$db_password" 2>> "$LOG_FILE"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
         echo "Check $LOG_FILE for more details."
