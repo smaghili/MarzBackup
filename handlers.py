@@ -23,9 +23,9 @@ router = Router()
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
         [
-            types.KeyboardButton(text="پشتیبان‌گیری فوری"),
-            types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری"),
-            types.KeyboardButton(text="بازیابی پشتیبان")
+            types.KeyboardButton(text="بازیابی بکاپ")
+            types.KeyboardButton(text="بکاپ فوری"),
+            types.KeyboardButton(text="فاصله زمانی بکاپ"),   
         ],
         [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
     ],
