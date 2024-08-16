@@ -50,6 +50,16 @@ async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
     await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
 
+def update_cron_job(interval):
+    cron_schedule = f"*/{interval} * * * *"
+    cron_command = f"/bin/bash /opt/MarzBackup/backup.sh"
+    
+    # Remove existing cron job
+    subprocess.run("crontab -l | grep -v '/opt/MarzBackup/backup.sh' | crontab -", shell=True)
+    
+    # Add new cron job
+    subprocess.run(f"(crontab -l ; echo '{cron_schedule} {cron_command}') | crontab -", shell=True)
+
 @router.message(BackupStates.waiting_for_schedule)
 async def process_schedule(message: types.Message, state: FSMContext):
     try:
@@ -61,25 +71,17 @@ async def process_schedule(message: types.Message, state: FSMContext):
         config["backup_interval_minutes"] = minutes
         save_config(config)
         
-        # Run the update_backup_cron command
-        process = await asyncio.create_subprocess_shell(
-            "marzbackup update_backup_interval",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
+        # Update cron job
+        update_cron_job(minutes)
         
-        if process.returncode == 0:
-            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
-            
-            # Perform an immediate backup
-            result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
-            if result.returncode == 0:
-                await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
-            else:
-                await message.answer(f"خطایی در فرآیند پشتیبان‌گیری فوری رخ داد: {result.stderr}")
+        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        
+        # Perform an immediate backup
+        result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
+        if result.returncode == 0:
+            await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
         else:
-            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
+            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری فوری رخ داد: {result.stderr}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
