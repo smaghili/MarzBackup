@@ -1,12 +1,16 @@
 import os
 import asyncio
 import subprocess
+import logging
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define states
 class BackupStates(StatesGroup):
@@ -178,24 +182,26 @@ async def process_report_interval(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "مشاهده مصرف کاربران")
 async def show_user_usage(message: types.Message):
+    logging.info("Starting show_user_usage function")
     try:
-        # Run the Node.js script and capture its output
-        process = await asyncio.create_subprocess_exec(
-            'node', '/root/table.js',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
+        # Use subprocess.run instead of asyncio.create_subprocess_exec
+        result = subprocess.run(['node', '/root/table.js'], 
+                                capture_output=True, 
+                                text=True, 
+                                check=True)
         
-        if process.returncode == 0:
-            # Send the table as a message
-            await message.answer(f"<pre>{stdout.decode().strip()}</pre>", parse_mode=types.ParseMode.HTML)
-        else:
-            await message.answer("خطا در تولید جدول. لطفاً بعداً دوباره امتحان کنید.")
-            print(f"Error in table.js: {stderr.decode()}")
+        logging.info("Table generation completed")
+        
+        # Send the table as a message
+        await message.answer(f"<pre>{result.stdout.strip()}</pre>", parse_mode=types.ParseMode.HTML)
+    except subprocess.CalledProcessError as e:
+        error_message = f"خطا در تولید جدول: {e.stderr}"
+        logging.error(error_message)
+        await message.answer(error_message)
     except Exception as e:
-        await message.answer("خطایی رخ داد. لطفاً بعداً دوباره امتحان کنید.")
-        print(f"Exception in show_user_usage: {str(e)}")
+        error_message = f"خطایی رخ داد: {str(e)}"
+        logging.exception("Exception in show_user_usage")
+        await message.answer(error_message)
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
