@@ -109,10 +109,9 @@ def should_run_cleanup():
 
 def is_within_schedule():
     now = datetime.now(tehran_tz)
-    rounded_time = now.replace(minute=0, second=0, microsecond=0)
-    if REPORT_INTERVAL < 60:
-        rounded_time = now.replace(minute=(now.minute // REPORT_INTERVAL) * REPORT_INTERVAL, second=0, microsecond=0)
-    return now - rounded_time < timedelta(minutes=1)
+    minutes_past_hour = now.minute % REPORT_INTERVAL
+    seconds_past_minute = now.second
+    return minutes_past_hour == 0 and seconds_past_minute < 60  # Allow execution within the first minute of each interval
 
 def run_tasks():
     now = datetime.now(tehran_tz)
