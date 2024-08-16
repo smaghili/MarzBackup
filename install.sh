@@ -159,6 +159,18 @@ fi
 # Update the version file
 echo "{\"installed_version\": \"$BRANCH\"}" | sudo tee "$VERSION_FILE" > /dev/null
 
+# Install npm and Node.js
+echo "Installing npm and Node.js..."
+sudo apt install -y npm nodejs
+
+# Install table package
+echo "Installing table package..."
+sudo npm install -g table
+
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip3 install -r requirements.txt
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
 pip3 install -r requirements.txt
