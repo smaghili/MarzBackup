@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram import Dispatcher
 from config import save_config, load_config
+from backup import create_and_send_backup
 
 # Define states
 class BackupStates(StatesGroup):
@@ -19,16 +20,14 @@ class ReportIntervalStates(StatesGroup):
 # Create a router instance
 router = Router()
 
-# Create a keyboard markup with the three buttons in a single row
+# Create a keyboard markup
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
-        [
-            types.KeyboardButton(text="بازیابی بکاپ"),
-            types.KeyboardButton(text="فاصله زمانی بکاپ"),
-            types.KeyboardButton(text="بکاپ فوری")
-        ,   
-        ],
-        [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
+        [types.KeyboardButton(text="پشتیبان‌گیری فوری")],
+        [types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
+        [types.KeyboardButton(text="بازیابی پشتیبان")],
+        [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")],
+        [types.KeyboardButton(text="مشاهده مصرف کاربران")]  # New button
     ],
     resize_keyboard=True
 )
@@ -37,31 +36,21 @@ keyboard = types.ReplyKeyboardMarkup(
 async def send_welcome(message: types.Message):
     await message.reply("به ربات MarzBackup خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
 
-@router.message(F.text == "بکاپ فوری")
+@router.message(F.text == "پشتیبان‌گیری فوری")
 async def handle_get_backup(message: types.Message):
     try:
-        result = subprocess.run(['/bin/bash', '/opt/MarzBackup/backup.sh'], capture_output=True, text=True)
-        if result.returncode == 0:
+        success = await create_and_send_backup(message.bot)
+        if success:
             await message.answer("پشتیبان‌گیری با موفقیت انجام شد و فایل ارسال گردید.")
         else:
-            await message.answer(f"خطایی در فرآیند پشتیبان‌گیری رخ داد: {result.stderr}")
+            await message.answer("خطایی در فرآیند پشتیبان‌گیری رخ داد.")
     except Exception as e:
         await message.answer(f"خطا در پشتیبان‌گیری: {e}")
 
-@router.message(F.text == "فاصله زمانی بکاپ")
+@router.message(F.text == "تنظیم فاصله زمانی پشتیبان‌گیری")
 async def set_backup(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_schedule)
     await message.answer("لطفاً زمانبندی پشتیبان‌گیری را به صورت دقیقه ارسال کنید (مثال: '60' برای هر 60 دقیقه یکبار).")
-
-def update_cron_job(interval):
-    cron_schedule = f"*/{interval} * * * *"
-    cron_command = f"/bin/bash /opt/MarzBackup/backup.sh"
-    
-    # Remove existing cron job
-    subprocess.run("crontab -l | grep -v '/opt/MarzBackup/backup.sh' | crontab -", shell=True)
-    
-    # Add new cron job
-    subprocess.run(f"(crontab -l ; echo '{cron_schedule} {cron_command}') | crontab -", shell=True)
 
 @router.message(BackupStates.waiting_for_schedule)
 async def process_schedule(message: types.Message, state: FSMContext):
@@ -74,10 +63,25 @@ async def process_schedule(message: types.Message, state: FSMContext):
         config["backup_interval_minutes"] = minutes
         save_config(config)
         
-        # Update cron job
-        update_cron_job(minutes)
+        # Run the update_backup_cron command
+        process = await asyncio.create_subprocess_shell(
+            "marzbackup update_backup_interval",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         
-        await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+        if process.returncode == 0:
+            await message.answer(f"زمانبندی پشتیبان‌گیری به هر {minutes} دقیقه یکبار تنظیم شد.")
+            
+            # Perform an immediate backup
+            success = await create_and_send_backup(message.bot)
+            if success:
+                await message.answer("پشتیبان‌گیری فوری با موفقیت انجام شد و فایل ارسال گردید.")
+            else:
+                await message.answer("خطایی در فرآیند پشتیبان‌گیری فوری رخ داد.")
+        else:
+            await message.answer(f"خطا در تنظیم زمانبندی: {stderr.decode()}")
     except ValueError:
         await message.answer("لطفاً یک عدد صحیح مثبت برای دقیقه وارد کنید.")
     except Exception as e:
@@ -85,7 +89,7 @@ async def process_schedule(message: types.Message, state: FSMContext):
     finally:
         await state.clear()
 
-@router.message(F.text == "بازیابی بکاپ")
+@router.message(F.text == "بازیابی پشتیبان")
 async def request_sql_file(message: types.Message, state: FSMContext):
     await state.set_state(BackupStates.waiting_for_sql_file)
     await message.answer("لطفاً فایل SQL پشتیبان را ارسال کنید.")
@@ -173,6 +177,26 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
     finally:
         await state.clear()
+
+@router.message(F.text == "مشاهده مصرف کاربران")
+async def show_user_usage(message: types.Message):
+    try:
+        # Run the Node.js script and capture its output
+        process = await asyncio.create_subprocess_exec(
+            'node', '/root/table.js',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            table_output = stdout.decode().strip()
+            await message.answer(f'```\n{table_output}\n```', parse_mode='Markdown')
+        else:
+            error_message = stderr.decode().strip()
+            await message.answer(f"خطا در تولید جدول: {error_message}")
+    except Exception as e:
+        await message.answer(f"خطا در اجرای اسکریپت: {str(e)}")
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
