@@ -181,11 +181,15 @@ async def process_report_interval(message: types.Message, state: FSMContext):
     finally:
         await state.clear()
 
+def escape_markdown_v2(text):
+    """Escape special characters for Markdown V2 format."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
 @router.message(F.text == "مشاهده مصرف کاربران")
 async def show_user_usage(message: types.Message):
     logging.info("Starting show_user_usage function")
     try:
-        # Use subprocess.run instead of asyncio.create_subprocess_exec
         result = subprocess.run(['node', '/root/table.js'], 
                                 capture_output=True, 
                                 text=True, 
@@ -193,16 +197,17 @@ async def show_user_usage(message: types.Message):
         
         logging.info("Table generation completed")
         
-        # Send the table as a message
-        await message.answer(f"<pre>{result.stdout.strip()}</pre>", parse_mode=ParseMode.MARKDOWN_V2)
+        # Escape special characters and send as Markdown V2
+        escaped_output = escape_markdown_v2(result.stdout.strip())
+        await message.answer(f"```\n{escaped_output}\n```", parse_mode=ParseMode.MARKDOWN_V2)
     except subprocess.CalledProcessError as e:
-        error_message = f"خطا در تولید جدول: {e.stderr}"
+        error_message = f"خطا در تولید گزارش: {escape_markdown_v2(e.stderr)}"
         logging.error(error_message)
-        await message.answer(error_message)
+        await message.answer(error_message, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
-        error_message = f"خطایی رخ داد: {str(e)}"
+        error_message = f"خطایی رخ داد: {escape_markdown_v2(str(e))}"
         logging.exception("Exception in show_user_usage")
-        await message.answer(error_message)
+        await message.answer(error_message, parse_mode=ParseMode.MARKDOWN_V2)
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
