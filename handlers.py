@@ -19,12 +19,14 @@ class ReportIntervalStates(StatesGroup):
 # Create a router instance
 router = Router()
 
-# Create a keyboard markup
+# Create a keyboard markup with the three buttons in a single row
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
-        [types.KeyboardButton(text="پشتیبان‌گیری فوری")],
-        [types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری")],
-        [types.KeyboardButton(text="بازیابی پشتیبان")],
+        [
+            types.KeyboardButton(text="پشتیبان‌گیری فوری"),
+            types.KeyboardButton(text="تنظیم فاصله زمانی پشتیبان‌گیری"),
+            types.KeyboardButton(text="بازیابی پشتیبان")
+        ],
         [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
     ],
     resize_keyboard=True
