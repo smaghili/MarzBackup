@@ -286,9 +286,15 @@ install_user_usage() {
     fi
     # Execute SQL script
     echo "Setting up database structures using $db_type..."
-    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < "$INSTALL_DIR/hourlyUsage.sql""
+    SQL_FILE="$INSTALL_DIR/hourlyUsage.sql"
+    if [ ! -f "$SQL_FILE" ]; then
+        echo "Error: SQL file not found at $SQL_FILE"
+        exit 1
+    fi
+    docker exec -i "$db_container" bash -c "$db_type -u root -p'$db_password' < $SQL_FILE" 2>> "$LOG_FILE"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to execute SQL script. Please check your database credentials and permissions."
+        echo "Check $LOG_FILE for more details."
         exit 1
     fi
     # Set a flag in the config file to indicate that user usage tracking is installed
