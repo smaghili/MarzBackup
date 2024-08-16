@@ -19,16 +19,18 @@ class ReportIntervalStates(StatesGroup):
 # Create a router instance
 router = Router()
 
-# Create a keyboard markup with the three buttons in a single row
+# Create a keyboard markup with the buttons
 keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
         [
             types.KeyboardButton(text="بازیابی بکاپ"),
             types.KeyboardButton(text="فاصله زمانی بکاپ"),
             types.KeyboardButton(text="بکاپ فوری")
-        ,   
         ],
-        [types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران")]
+        [
+            types.KeyboardButton(text="تغییر زمان گزارش مصرف کاربران"),
+            types.KeyboardButton(text="مشاهده مصرف کاربران")
+        ]
     ],
     resize_keyboard=True
 )
@@ -173,6 +175,27 @@ async def process_report_interval(message: types.Message, state: FSMContext):
         await message.answer("لطفاً یک عدد صحیح مثبت وارد کنید.")
     finally:
         await state.clear()
+
+@router.message(F.text == "مشاهده مصرف کاربران")
+async def show_user_usage(message: types.Message):
+    try:
+        # Run the Node.js script and capture its output
+        process = await asyncio.create_subprocess_exec(
+            'node', '/root/table.js',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            # Send the table as a message
+            await message.answer(f"<pre>{stdout.decode().strip()}</pre>", parse_mode=types.ParseMode.HTML)
+        else:
+            await message.answer("خطا در تولید جدول. لطفاً بعداً دوباره امتحان کنید.")
+            print(f"Error in table.js: {stderr.decode()}")
+    except Exception as e:
+        await message.answer("خطایی رخ داد. لطفاً بعداً دوباره امتحان کنید.")
+        print(f"Exception in show_user_usage: {str(e)}")
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(router)
